@@ -1,0 +1,346 @@
+// ============================================================================
+// SmartTravel — Prisma Schema
+// Source of truth for every place page on the site. Nothing on a public page
+// is computed live from external APIs — everything is read from these tables.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum PlaceCategory {
+  HOTEL
+  RESORT
+  RESTAURANT
+  AIRBNB
+  GUEST_HOUSE
+  APARTMENT
+  CAMPSITE
+  ATTRACTION
+}
+
+enum PlaceStatus {
+  DRAFT
+  PUBLISHED
+  NEEDS_REVIEW
+  ARCHIVED
+}
+
+enum RefreshStatus {
+  STABLE
+  QUEUED
+  IN_PROGRESS
+  FAILED
+}
+
+enum ImageStatus {
+  PENDING
+  PARTIAL
+  COMPLETE
+  NONE_AVAILABLE
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum IngestionRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+// ---------------------------------------------------------------------------
+// Admin / Auth
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          AdminRole @default(EDITOR)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  placesCreated Place[]   @relation("PlaceCreatedBy")
+  placesUpdated Place[]   @relation("PlaceUpdatedBy")
+
+  @@map("admin_users")
+}
+
+// ---------------------------------------------------------------------------
+// Geography / taxonomy lookups — adding a new country is a data insert only
+// ---------------------------------------------------------------------------
+
+model Country {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  cities    City[]
+  places    Place[]
+
+  @@map("countries")
+}
+
+model City {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String
+  countryId String
+  country   Country  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+
+  places    Place[]
+
+  @@unique([countryId, slug])
+  @@map("cities")
+}
+
+// ---------------------------------------------------------------------------
+// Core entity
+// ---------------------------------------------------------------------------
+
+model Place {
+  id            String        @id @default(cuid())
+  name          String
+  slug          String        @unique
+  category      PlaceCategory
+  status        PlaceStatus   @default(DRAFT)
+
+  countryId     String
+  country       Country       @relation(fields: [countryId], references: [id])
+  cityId        String?
+  city          City?         @relation(fields: [cityId], references: [id])
+  district      String?
+
+  latitude      Float?
+  longitude     Float?
+  address       String?
+  googleMapsUrl String?
+
+  website       String?
+  phone         String?
+  email         String?
+
+  // Free-form structured facts collected at ingestion time. Kept as JSON so
+  // amenity/room-type shapes can vary by category without schema churn.
+  amenities     Json?         // e.g. ["Free WiFi", "Pool", "Airport Shuttle"]
+  roomTypes     Json?         // e.g. [{ "name": "Deluxe King", "notes": "..." }]
+
+  description   String?       // raw / source description, NOT the AI summary
+  priceLevel    Int?          // 1-4, optional signal only
+
+  source        String?       // where this record was ingested from
+  sourceRef     String?       // external id/url for de-duplication
+
+  refreshStatus RefreshStatus @default(STABLE)
+  imageStatus   ImageStatus   @default(PENDING)
+
+  featured      Boolean       @default(false)
+  viewCount     Int           @default(0)
+
+  createdById   String?
+  createdBy     AdminUser?    @relation("PlaceCreatedBy", fields: [createdById], references: [id])
+  updatedById   String?
+  updatedBy     AdminUser?    @relation("PlaceUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  media         PlaceMedia[]
+  summaries     AISummary[]
+  seoMeta       SEOMeta?
+  faqs          PlaceFAQ[]
+
+  nearbyFrom    NearbyRelation[] @relation("NearbyFromPlace")
+  nearbyTo      NearbyRelation[] @relation("NearbyToPlace")
+
+  searchLogs    SearchQueryLog[]
+  pageViews     PageViewLog[]
+  ingestionLogs IngestionLog[]
+
+  @@index([category, countryId, cityId])
+  @@index([status])
+  @@index([slug])
+  @@map("places")
+}
+
+model PlaceMedia {
+  id           String   @id @default(cuid())
+  placeId      String
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  cloudinaryId String   // Cloudinary public_id — used for transformations & deletion
+  url          String   // secure_url returned by Cloudinary
+  altText      String?
+  width        Int?
+  height       Int?
+  order        Int      @default(0)
+  isHero       Boolean  @default(false)
+
+  license      String?  // e.g. "business-submitted", "wikimedia-cc-by-sa", "official-media"
+  sourceUrl    String?  // attribution / provenance
+
+  createdAt    DateTime @default(now())
+
+  @@index([placeId, order])
+  @@map("place_media")
+}
+
+// Versioned AI summaries. `isCurrent` marks the one actually rendered on the
+// public page — older versions are kept for audit/rollback, never deleted.
+model AISummary {
+  id           String   @id @default(cuid())
+  placeId      String
+  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  content      String   @db.Text
+  faqJson      Json?    // [{ "question": "...", "answer": "..." }]
+
+  model        String
+  promptTokens Int      @default(0)
+  outputTokens Int      @default(0)
+  estCostUsd   Float    @default(0)
+
+  isCurrent    Boolean  @default(true)
+  generatedAt  DateTime @default(now())
+  triggeredBy  String   // "ingestion" | "manual-regenerate" | "scheduled-refresh"
+
+  @@index([placeId, isCurrent])
+  @@map("ai_summaries")
+}
+
+model PlaceFAQ {
+  id        String   @id @default(cuid())
+  placeId   String
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String   @db.Text
+  order     Int      @default(0)
+
+  @@index([placeId])
+  @@map("place_faqs")
+}
+
+model SEOMeta {
+  id              String   @id @default(cuid())
+  placeId         String   @unique
+  place           Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  title           String
+  description     String
+  canonicalPath   String   // e.g. "/hotel/speke-resort-munyonyo"
+  ogImageUrl      String?
+  structuredData  Json?    // pre-rendered JSON-LD override, optional — usually generated on the fly
+
+  updatedAt       DateTime @updatedAt
+
+  @@map("seo_meta")
+}
+
+// Precomputed proximity/category relationships — powers "Nearby" and
+// "Similar Places" without a live geo-query on every page load.
+model NearbyRelation {
+  id           String   @id @default(cuid())
+  fromPlaceId  String
+  fromPlace    Place    @relation("NearbyFromPlace", fields: [fromPlaceId], references: [id], onDelete: Cascade)
+  toPlaceId    String
+  toPlace      Place    @relation("NearbyToPlace", fields: [toPlaceId], references: [id], onDelete: Cascade)
+
+  distanceKm   Float?
+  relationType String   @default("nearby") // "nearby" | "similar"
+  rank         Int      @default(0)
+
+  @@unique([fromPlaceId, toPlaceId, relationType])
+  @@index([fromPlaceId, relationType, rank])
+  @@map("nearby_relations")
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion / background pipeline
+// ---------------------------------------------------------------------------
+
+model IngestionBatch {
+  id          String             @id @default(cuid())
+  label       String             // e.g. "uganda-kampala-hotels-2026-07-20"
+  country     String?
+  category    PlaceCategory?
+  status      IngestionRunStatus @default(RUNNING)
+
+  totalFound     Int @default(0)
+  totalInserted  Int @default(0)
+  totalUpdated   Int @default(0)
+  totalSkipped   Int @default(0)
+  totalFailed    Int @default(0)
+
+  startedAt   DateTime           @default(now())
+  finishedAt  DateTime?
+
+  logs        IngestionLog[]
+
+  @@map("ingestion_batches")
+}
+
+model IngestionLog {
+  id         String   @id @default(cuid())
+  batchId    String
+  batch      IngestionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  placeId    String?
+  place      Place?   @relation(fields: [placeId], references: [id])
+
+  stage      String   // "discover" | "normalize" | "enrich" | "persist" | "queue-ai" | "revalidate"
+  status     String   // "success" | "skipped" | "failed"
+  message    String?  @db.Text
+
+  createdAt  DateTime @default(now())
+
+  @@index([batchId])
+  @@map("ingestion_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight analytics — avoids depending on a third-party API for the
+// admin dashboard's core metrics.
+// ---------------------------------------------------------------------------
+
+model SearchQueryLog {
+  id        String   @id @default(cuid())
+  query     String
+  resultsCount Int
+  placeId   String?  // set if the user clicked through to a specific place
+  place     Place?   @relation(fields: [placeId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([query])
+  @@map("search_query_logs")
+}
+
+model PageViewLog {
+  id        String   @id @default(cuid())
+  placeId   String
+  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([placeId, createdAt])
+  @@map("page_view_logs")
+}

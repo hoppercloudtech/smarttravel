@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Dusk-over-savanna palette — a night sky base with gold (sunset) and
+     teal (highland lake) accents. Chosen specifically to avoid the generic
+     cream+terracotta AI-default look while still feeling warm and East
+     African rather than corporate-tech-dark. */
+  --background: 160 18% 7%;
+  --surface: 160 15% 10%;
+  --surface-raised: 160 14% 14%;
+  --border: 160 12% 20%;
+  --foreground: 40 30% 94%;
+  --muted: 150 8% 62%;
+  --gold: 38 68% 60%;
+  --gold-soft: 38 55% 78%;
+  --teal: 174 40% 48%;
+  --clay: 16 55% 58%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "ss01" 1, "cv01" 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--gold));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Signature element: a dotted "route line" used as a section divider,
+   evoking a travel itinerary line between waypoints. */
+.route-divider {
+  position: relative;
+  height: 2px;
+  background-image: linear-gradient(to right, hsl(var(--border)) 50%, transparent 0%);
+  background-position: top;
+  background-size: 10px 2px;
+  background-repeat: repeat-x;
+}
+
+.route-divider::before,
+.route-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--gold));
+  transform: translateY(-50%);
+}
+.route-divider::before { left: 0; }
+.route-divider::after { right: 0; }
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
