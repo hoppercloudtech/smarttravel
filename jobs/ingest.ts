@@ -4,7 +4,7 @@ import { toSlug } from "@/lib/utils";
 import { CATEGORY_CONFIG } from "@/lib/categories";
 import { generateAndStoreSummary } from "@/lib/ai";
 import type { PlaceCategory } from "@prisma/client";
-
+import { overpassAdapter } from "./adapters/overpass-adapter";
 // ============================================================================
 // Background Ingestion Pipeline
 // Discovers places from licensed/approved sources, normalizes and persists
@@ -43,14 +43,14 @@ export interface PlaceSourceAdapter {
  * pipeline (normalize/persist/AI/revalidate) does not need to change when
  * you add a new adapter — only register it in ADAPTERS below.
  */
-const sampleAdapter: PlaceSourceAdapter = {
-  name: "sample-manual-seed",
-  async discover({ limit }) {
-    return [] as RawPlaceCandidate[]; // no-op until a real source is wired in
-  },
-};
+// const sampleAdapter: PlaceSourceAdapter = {
+//   name: "sample-manual-seed",
+//   async discover({ limit }) {
+//     return [] as RawPlaceCandidate[]; // no-op until a real source is wired in
+//   },
+// };
 
-export const ADAPTERS: PlaceSourceAdapter[] = [sampleAdapter];
+export const ADAPTERS: PlaceSourceAdapter[] = [overpassAdapter];
 
 function isSubstantiallyComplete(candidate: RawPlaceCandidate): boolean {
   return Boolean(candidate.name && candidate.countryName && (candidate.address || (candidate.latitude && candidate.longitude)));
