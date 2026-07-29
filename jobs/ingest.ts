@@ -3,8 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { toSlug } from "@/lib/utils";
 import { CATEGORY_CONFIG } from "@/lib/categories";
 import { generateAndStoreSummary } from "@/lib/ai";
+import { discoverPlaces } from "@/lib/overpass";
+import { findCommonsImage } from "@/lib/wikimedia";
+import { uploadImageFromUrl } from "@/lib/cloudinary";
+import { getRegion, type Region } from "@/lib/regions";
 import type { PlaceCategory } from "@prisma/client";
-import { overpassAdapter } from "./adapters/overpass-adapter";
+import { resolveRegionFromPlaceName } from "@/lib/geocode";
+
 // ============================================================================
 // Background Ingestion Pipeline
 // Discovers places from licensed/approved sources, normalizes and persists
@@ -32,23 +37,39 @@ export type RawPlaceCandidate = {
 
 export interface PlaceSourceAdapter {
   name: string;
-  discover(opts: { country: string; category: PlaceCategory; limit: number }): Promise<RawPlaceCandidate[]>;
+  discover(opts: { region: Region; category: PlaceCategory; limit: number }): Promise<RawPlaceCandidate[]>;
 }
 
 /**
- * Placeholder adapter — demonstrates the discover() contract every real
- * source must satisfy. Swap this out for adapters backed by your actual
- * licensed sources (tourism board feeds, business-submitted listings,
- * Wikimedia Commons + open datasets, partner APIs, etc). The rest of the
- * pipeline (normalize/persist/AI/revalidate) does not need to change when
- * you add a new adapter — only register it in ADAPTERS below.
+ * OpenStreetMap / Overpass adapter — discovers places within one region's
+ * bounding box (see lib/regions.ts). Deliberately scoped to a small area
+ * per call rather than a whole country: Overpass times out computing a
+ * full-country `area[...]` polygon, but a bbox query returns in seconds.
+ * OSM data is ODbL-licensed and reuse-permitted with attribution, which
+ * covers the "legally reusable source" requirement from the architecture doc.
  */
-// const sampleAdapter: PlaceSourceAdapter = {
-//   name: "sample-manual-seed",
-//   async discover({ limit }) {
-//     return [] as RawPlaceCandidate[]; // no-op until a real source is wired in
-//   },
-// };
+const overpassAdapter: PlaceSourceAdapter = {
+  name: "openstreetmap-overpass",
+  async discover({ region, category, limit }) {
+    const results = await discoverPlaces(region, category, limit);
+    return results.map((p) => ({
+      name: p.name,
+      category: p.category,
+      countryName: p.country,
+      cityName: p.city,
+      district: p.district,
+      address: p.address,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      website: p.website,
+      phone: p.phone,
+      email: p.email,
+      amenities: p.amenities,
+      description: p.description,
+      sourceRef: p.id, // OSM type-id, e.g. "node-294018725" — stable for de-duplication
+    }));
+  },
+};
 
 export const ADAPTERS: PlaceSourceAdapter[] = [overpassAdapter];
 
@@ -57,22 +78,29 @@ function isSubstantiallyComplete(candidate: RawPlaceCandidate): boolean {
 }
 
 /**
- * Runs one ingestion batch for a given country/category pair. This is the
- * function scheduled jobs call — see app/api/cron/ingest/route.ts.
+ * Runs one ingestion batch for a given region/category pair. This is the
+ * function scheduled jobs call — see app/api/cron/ingest/route.ts. Regions
+ * (not countries) are the unit of work on purpose — see lib/regions.ts.
  */
 export async function runIngestionBatch(opts: {
-  country: string;
+  regionKey: string;
+  customLocation?: { district: string; country: string };
   category: PlaceCategory;
   limit?: number;
   adapter?: PlaceSourceAdapter;
 }) {
   const adapter = opts.adapter ?? ADAPTERS[0];
   const limit = opts.limit ?? 25;
+  const region = opts.regionKey
+    ? getRegion(opts.regionKey)
+    : opts.customLocation
+      ? await resolveRegionFromPlaceName(opts.customLocation.district, opts.customLocation.country)
+      : (() => { throw new Error("runIngestionBatch requires either regionKey or customLocation"); })();
 
   const batch = await prisma.ingestionBatch.create({
     data: {
-      label: `${opts.country}-${opts.category}-${new Date().toISOString().slice(0, 10)}`,
-      country: opts.country,
+      label: `${region.label}-${opts.category}-${new Date().toISOString().slice(0, 10)}`,
+      country: region.label, // reusing this column for the region label — no schema change needed
       category: opts.category,
       status: "RUNNING",
     },
@@ -84,15 +112,15 @@ export async function runIngestionBatch(opts: {
   let inserted = 0, updated = 0, skipped = 0, failed = 0, found = 0;
 
   try {
-    // 1. DISCOVER
-    const candidates = await adapter.discover({ country: opts.country, category: opts.category, limit });
+    // 1. DISCOVER — bbox-scoped to this one region, never a whole country
+    const candidates = await adapter.discover({ region, category: opts.category, limit });
     found = candidates.length;
-    await log({ stage: "discover", status: "success", message: `Found ${found} candidates via ${adapter.name}` });
+    await log({ stage: "discover", status: "success", message: `Found ${found} candidates via ${adapter.name} in ${region.label}` });
 
     const country = await prisma.country.upsert({
-      where: { slug: toSlug(opts.country) },
+      where: { slug: toSlug(region.country) },
       update: {},
-      create: { name: opts.country, slug: toSlug(opts.country) },
+      create: { name: region.country, slug: toSlug(region.country) },
     });
 
     for (const candidate of candidates) {
@@ -132,46 +160,101 @@ export async function runIngestionBatch(opts: {
 
         const place = existing
           ? await prisma.place.update({
-              where: { id: existing.id },
-              data: {
-                district: candidate.district,
-                address: candidate.address,
-                latitude: candidate.latitude,
-                longitude: candidate.longitude,
-                website: candidate.website,
-                phone: candidate.phone,
-                email: candidate.email,
-                amenities: candidate.amenities ?? [],
-                description: candidate.description,
-                refreshStatus: "QUEUED",
-              },
-            })
+            where: { id: existing.id },
+            data: {
+              district: candidate.district,
+              address: candidate.address,
+              latitude: candidate.latitude,
+              longitude: candidate.longitude,
+              website: candidate.website,
+              phone: candidate.phone,
+              email: candidate.email,
+              amenities: candidate.amenities ?? [],
+              description: candidate.description,
+              refreshStatus: "QUEUED",
+            },
+          })
           : await prisma.place.create({
-              data: {
-                name: candidate.name,
-                slug,
-                category: candidate.category,
-                status,
-                countryId: country.id,
-                cityId: city?.id,
-                district: candidate.district,
-                address: candidate.address,
-                latitude: candidate.latitude,
-                longitude: candidate.longitude,
-                website: candidate.website,
-                phone: candidate.phone,
-                email: candidate.email,
-                amenities: candidate.amenities ?? [],
-                description: candidate.description,
-                source: adapter.name,
-                sourceRef: candidate.sourceRef,
-                refreshStatus: "QUEUED",
-                imageStatus: candidate.imageUrls?.length ? "PENDING" : "NONE_AVAILABLE",
-              },
-            });
+            data: {
+              name: candidate.name,
+              slug,
+              category: candidate.category,
+              status,
+              countryId: country.id,
+              cityId: city?.id,
+              district: candidate.district,
+              address: candidate.address,
+              latitude: candidate.latitude,
+              longitude: candidate.longitude,
+              website: candidate.website,
+              phone: candidate.phone,
+              email: candidate.email,
+              amenities: candidate.amenities ?? [],
+              description: candidate.description,
+              source: adapter.name,
+              sourceRef: candidate.sourceRef,
+              refreshStatus: "QUEUED",
+              imageStatus: candidate.imageUrls?.length ? "PENDING" : "NONE_AVAILABLE",
+            },
+          });
 
         existing ? updated++ : inserted++;
         await log({ placeId: place.id, stage: "persist", status: "success" });
+
+        // 4.5 ENRICH IMAGES — Wikimedia Commons only. Every file there carries
+        // an explicit, checkable open license, unlike scraping business
+        // photos from Google/social platforms, which is why this is the one
+        // source auto-wired in. Skipped once a place already has a photo, so
+        // re-running a batch doesn't re-fetch on every pass.
+        if (place.imageStatus !== "COMPLETE") {
+          try {
+            const commonsImage = await findCommonsImage({
+              name: candidate.name,
+              latitude: candidate.latitude,
+              longitude: candidate.longitude,
+            });
+
+            if (commonsImage) {
+              const uploaded = await uploadImageFromUrl(commonsImage.url, place.slug);
+              const existingMediaCount = await prisma.placeMedia.count({ where: { placeId: place.id } });
+
+              await prisma.placeMedia.create({
+                data: {
+                  placeId: place.id,
+                  cloudinaryId: uploaded.cloudinaryId,
+                  url: uploaded.url,
+                  width: uploaded.width,
+                  height: uploaded.height,
+                  order: existingMediaCount,
+                  isHero: existingMediaCount === 0,
+                  license: commonsImage.license,
+                  sourceUrl: commonsImage.descriptionUrl,
+                },
+              });
+
+              await prisma.place.update({ where: { id: place.id }, data: { imageStatus: "COMPLETE" } });
+              await log({
+                placeId: place.id,
+                stage: "enrich-images",
+                status: "success",
+                message: `Wikimedia Commons image attached (${commonsImage.license}${commonsImage.artist ? `, © ${commonsImage.artist}` : ""})`,
+              });
+            } else {
+              await log({ placeId: place.id, stage: "enrich-images", status: "skipped", message: "No openly-licensed Commons image found" });
+            }
+          } catch (imgErr) {
+            // Never let an image lookup failure block AI generation or
+            // publishing — the place still goes live, just without a photo.
+            await log({
+              placeId: place.id,
+              stage: "enrich-images",
+              status: "failed",
+              message: imgErr instanceof Error ? imgErr.message : "Unknown image error",
+            });
+          }
+        }
+
+        // 5. QUEUE AI — batched, one summary per place, never on a public request
 
         // 5. QUEUE AI — batched, one summary per place, never on a public request
         try {

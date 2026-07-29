@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { deleteImageFromCloudinary } from "@/lib/cloudinary";
 import { CATEGORY_CONFIG } from "@/lib/categories";
 import type { PlaceCategory, PlaceStatus } from "@prisma/client";
 
@@ -45,7 +46,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const place = await prisma.place.delete({ where: { id: params.id } });
+  const place = await prisma.place.findUnique({
+    where: { id: params.id },
+    include: { media: true },
+  });
+  if (!place) return NextResponse.json({ error: "Place not found" }, { status: 404 });
+
+  // Clean up Cloudinary first — Prisma's onDelete: Cascade removes the
+  // PlaceMedia rows automatically, but it has no idea Cloudinary exists, so
+  // the actual image files would otherwise be orphaned there forever.
+  await Promise.allSettled(place.media.map((m) => deleteImageFromCloudinary(m.cloudinaryId)));
+
+  await prisma.place.delete({ where: { id: params.id } });
   revalidatePath(`/${CATEGORY_CONFIG[place.category].slug}/${place.slug}`);
 
   return NextResponse.json({ ok: true });
