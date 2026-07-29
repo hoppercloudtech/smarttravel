@@ -94,9 +94,9 @@ export default async function HomePage() {
       <section className="container pt-20 pb-14">
         <div className="max-w-3xl">
 
-          <p className="text-sm uppercase tracking-widest text-gold-soft mb-4">
+          {/* <p className="text-sm uppercase tracking-widest text-gold-soft mb-4">
             Uganda · Kenya · Tanzania · Rwanda
-          </p>
+          </p> */}
 
           <h1 className="font-display text-5xl md:text-6xl leading-tight mb-6">
             Every place worth finding in East Africa
@@ -104,8 +104,7 @@ export default async function HomePage() {
 
           <p className="text-lg text-muted-foreground leading-relaxed">
             Hotels, restaurants, stays and attractions — with original overviews,
-            real locations, and the places nearby worth knowing about. No reviews,
-            just the facts.
+            real locations, and the places nearby worth knowing about.
           </p>
 
         </div>

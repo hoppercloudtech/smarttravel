@@ -13,7 +13,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
       <div className="container flex h-16 items-center justify-between gap-6">
         <Link href="/" className="font-display text-xl tracking-tight shrink-0">
-          Smart<span className="text-gold">Travel</span>
+          Horizon<span className="text-gold">Spot</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6 text-sm text-muted">
