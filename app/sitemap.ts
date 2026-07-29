@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/prisma";
 import { CATEGORY_CONFIG } from "@/lib/categories";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://smarttravel.africa";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://horizonspot.site";
 
 // Next.js splits this automatically once it exceeds ~50,000 URLs by
 // generating sitemap.xml/[id] variants if you export generateSitemaps() —
