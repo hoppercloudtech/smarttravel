@@ -9,8 +9,8 @@ type FullPlace = Place & {
   faqs: PlaceFAQ[];
 };
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://smarttravel.africa";
-const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "SmartTravel";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://horizonspot.site";
+const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "horizonSpot";
 
 export function canonicalPathFor(place: Pick<Place, "category" | "slug">) {
   return `/${CATEGORY_CONFIG[place.category].slug}/${place.slug}`;

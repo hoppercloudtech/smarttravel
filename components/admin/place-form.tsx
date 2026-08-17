@@ -103,22 +103,41 @@ export function PlaceForm({
   }
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !values.id) {
-      alert("Save the place first, then upload photos.");
+    const files = Array.from(e.target.files ?? []);
+
+    if (files.length === 0 || !values.id) {
+      if (!values.id) {
+        alert("Save the place first, then upload photos.");
+      }
       return;
     }
+
     setUploading(true);
+
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("placeId", values.id);
-      const res = await fetch("/api/admin/upload", { method: "POST", body: formData });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setMedia((m) => [...m, data.media]);
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("placeId", values.id);
+
+        const res = await fetch("/api/admin/upload", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+
+        const data = await res.json();
+
+        setMedia((m) => [...m, data.media]);
+      }
     } catch (err) {
-      alert("Upload failed. " + (err instanceof Error ? err.message : ""));
+      alert(
+        "One or more uploads failed. " +
+        (err instanceof Error ? err.message : "")
+      );
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -292,7 +311,7 @@ export function PlaceForm({
             <label className="flex items-center justify-center gap-2 rounded-md border border-dashed border-border py-3 text-sm text-muted cursor-pointer hover:border-gold/50">
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {uploading ? "Uploading…" : "Upload photo"}
-              <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={handleUpload} />
             </label>
             {!isEdit && <p className="text-xs text-muted">Save the place first to enable photo uploads.</p>}
             {media.length > 0 && <p className="text-xs text-muted">Hover a photo to remove it — useful if an upload doesn't actually match the place.</p>}

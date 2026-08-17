@@ -20,8 +20,8 @@ const mono = IBM_Plex_Mono({
   variable: "--font-mono",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://smarttravel.africa";
-const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "SmartTravel";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://horizonspot.site";
+const SITE_NAME = process.env.NEXT_PUBLIC_SITE_NAME || "horizonSpot";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

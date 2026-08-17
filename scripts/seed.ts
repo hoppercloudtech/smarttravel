@@ -6,8 +6,8 @@ async function main() {
   console.log("Seeding SmartTravel...");
 
   // --- Admin user ---------------------------------------------------------
-  const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@smarttravel.africa";
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD || "ChangeMe123!";
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@horizonspot.site";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || "ChangeMe123";
   const passwordHash = await bcrypt.hash(adminPassword, 10);
 
   await prisma.adminUser.upsert({
