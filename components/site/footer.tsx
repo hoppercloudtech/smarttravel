@@ -33,6 +33,8 @@ export function SiteFooter() {
             <li><Link href="/hotel" className="hover:text-gold transition-colors">Hotels</Link></li>
             <li><Link href="/restaurant" className="hover:text-gold transition-colors">Restaurants</Link></li>
             <li><Link href="/attraction" className="hover:text-gold transition-colors">Attractions</Link></li>
+            <li><Link href="/terms" className="hover:text-gold transition-colors">Terms of Service</Link></li>
+            <li><Link href="/privacy" className="hover:text-gold transition-colors">Privacy Policy</Link></li>
           </ul>
         </div>
       </div>

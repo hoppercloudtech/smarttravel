@@ -177,6 +177,7 @@ model Place {
   searchLogs    SearchQueryLog[]
   pageViews     PageViewLog[]
   ingestionLogs IngestionLog[]
+  tiktokPosts   TikTokPost[]
 
   @@index([category, countryId, cityId])
   @@index([status])
@@ -343,4 +344,171 @@ model PageViewLog {
 
   @@index([placeId, createdAt])
   @@map("page_view_logs")
+}
+
+// ============================================================================
+// TikTok Content Automation
+// Reuses Place directly via a foreign key rather than duplicating hotel/
+// restaurant/attraction data. Since Place already unifies every content type
+// under `category`, there's no polymorphic contentType field — eligibility
+// and selection both just query Place with the right filters.
+// ============================================================================
+
+enum TikTokAccountStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum TikTokPostStatus {
+  PENDING_REVIEW // approvalRequired=true and not yet approved by an admin
+  SCHEDULED      // approved (or auto-approved) and waiting for scheduledFor
+  PUBLISHING     // publish attempt currently in flight
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+enum TikTokMediaType {
+  PHOTO_CAROUSEL // supported now — TikTok's Content Posting API photo endpoint
+  VIDEO          // modeled for the future; no generator wired in yet
+}
+
+model TikTokAccount {
+  id                String              @id @default(cuid())
+  openId            String              @unique // TikTok's stable user identifier
+  username          String?
+
+  // Tokens are encrypted at rest with lib/tiktok/crypto.ts (AES-256-GCM)
+  // before being written here — never store raw OAuth tokens in the DB.
+  accessTokenEnc    String              @db.Text
+  refreshTokenEnc   String              @db.Text
+  scope             String              // space-separated granted scopes, e.g. "video.publish user.info.basic"
+  expiresAt         DateTime
+  refreshExpiresAt  DateTime?
+
+  status            TikTokAccountStatus @default(ACTIVE)
+  isAudited         Boolean             @default(false) // false = posts publish as SELF_ONLY only, see lib/tiktok/client.ts
+
+  connectedAt       DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  settings          TikTokPostingSettings?
+  posts             TikTokPost[]
+
+  @@map("tiktok_accounts")
+}
+
+// Single-row configuration table (one row per connected account). Every
+// behavior the project brief asks to be "configurable, not hard-coded"
+// lives here, read fresh by the queue builder on every run.
+model TikTokPostingSettings {
+  id                     String        @id @default(cuid())
+  accountId              String        @unique
+  account                TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  dailyPostCount         Int      @default(5)
+  minHotelPostsPerDay    Int      @default(2)
+  autoPublish            Boolean  @default(false) // OFF by default — an admin opts in deliberately
+  approvalRequired       Boolean  @default(true)
+
+  cooldownDays           Int      @default(30) // minimum days before the same Place can be reposted
+
+  // Posting windows as 24h "HH:mm" strings in the given IANA timezone —
+  // the queue builder spreads dailyPostCount posts across these windows
+  // rather than clustering them. Kept as JSON so window/count can change
+  // without a migration.
+  postingTimezone        String   @default("UTC")
+  postingWindows         Json     @default("[\"08:00\",\"11:00\",\"14:00\",\"18:00\",\"21:00\"]")
+
+  // Scoring weights (0-1) — see lib/tiktok/scoring.ts.
+  scoringWeights         Json     @default("{\"popularity\":0.35,\"freshness\":0.2,\"imageQuality\":0.15,\"categoryDiversity\":0.15,\"geoDiversity\":0.15}")
+
+  hashtagBaseTags        Json     @default("[\"Travel\",\"TravelTok\",\"Explore\"]")
+  ctaVariants            Json     @default("[\"Discover more through the link in our bio.\",\"Explore more places through our website.\",\"Find your next destination — link in bio.\"]")
+
+  updatedAt              DateTime @updatedAt
+
+  @@map("tiktok_posting_settings")
+}
+
+// A curated library of tracks the operator has rights to use, standing in
+// for "trending sound selection" — the public Content Posting API doesn't
+// expose TikTok's trending sound library for programmatic attachment, so
+// sound comes from whatever audio is baked into the uploaded file. Manually
+// maintained, not scraped.
+model TikTokTrack {
+  id          String   @id @default(cuid())
+  label       String   // e.g. "Upbeat Travel Loop A"
+  fileUrl     String   // Cloudinary (or other) URL to the licensed audio file
+  moodTags    Json     @default("[]") // e.g. ["upbeat","cinematic","chill"]
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  posts       TikTokPost[]
+
+  @@map("tiktok_tracks")
+}
+
+model TikTokPost {
+  id              String            @id @default(cuid())
+
+  accountId       String
+  account         TikTokAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  placeId         String
+  place           Place             @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  status          TikTokPostStatus  @default(PENDING_REVIEW)
+  mediaType       TikTokMediaType   @default(PHOTO_CAROUSEL)
+  mediaUrls       Json              // snapshot of the Cloudinary URLs used, frozen at selection time
+
+  trackId         String?
+  track           TikTokTrack?      @relation(fields: [trackId], references: [id])
+
+  caption         String            @db.Text
+  hashtags        Json              // string[]
+  ctaVariant      String?
+
+  selectionScore  Float             // the score this Place got when chosen — feeds later analytics/tuning
+  selectionReason Json?             // e.g. {"popularity":0.8,"trendingHotelSlot":true} — powers "why was it selected?"
+
+  scheduledFor    DateTime
+  publishedAt     DateTime?
+
+  tiktokPublishId String?           // TikTok's publish_id / video id once published
+  errorMessage    String?           @db.Text
+  attemptCount    Int               @default(0)
+
+  // Analytics — populated by a future metrics-refresh job, out of scope
+  // for this pass (needs the TikTok Display/Analytics API wired in).
+  views           Int?
+  likes           Int?
+  comments        Int?
+  shares          Int?
+  profileVisits   Int?
+  websiteClicks   Int?
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  logs            TikTokPublishingLog[]
+
+  @@index([status, scheduledFor])
+  @@index([placeId])
+  @@map("tiktok_posts")
+}
+
+model TikTokPublishingLog {
+  id        String     @id @default(cuid())
+  postId    String
+  post      TikTokPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  event     String     // "queued" | "validation_failed" | "publish_attempt" | "publish_success" | "publish_failed" | "retried" | "cancelled"
+  message   String?    @db.Text
+
+  createdAt DateTime   @default(now())
+
+  @@index([postId])
+  @@map("tiktok_publishing_logs")
 }

@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { LayoutDashboard, MapPin, Workflow, BarChart3, LogOut } from "lucide-react";
+import { LayoutDashboard, MapPin, Workflow, BarChart3, LogOut, Video } from "lucide-react";
 import { signOutAction } from "@/app/admin/actions";
 
 const LINKS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/places", label: "Places", icon: MapPin },
   { href: "/admin/ingestion", label: "Ingestion", icon: Workflow },
+  { href: "/admin/tiktok", label: "TikTok Automation", icon: Video },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
