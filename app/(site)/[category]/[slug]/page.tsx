@@ -11,7 +11,8 @@ import { FaqSection } from "@/components/site/faq";
 import { MapEmbed } from "@/components/site/map-embed";
 import { PlaceCard, type PlaceCardData } from "@/components/site/place-card";
 import { Badge } from "@/components/ui/badge";
-
+import { getRelatedPlaces } from "@/lib/places/relatedPlaces";
+import { RelatedPlacesSection } from "@/components/site/related-places-section";
 // ISR: pages are served statically and refreshed at most every 24h, but the
 // ingestion pipeline and admin edits call revalidatePath() for immediate
 // freshness on create/update — see jobs/ingest.ts and the admin place actions.
@@ -92,6 +93,15 @@ export default async function PlacePage({ params }: Props) {
     countryName: rel.toPlace.country.name,
     heroImageUrl: rel.toPlace.media[0]?.url,
   }));
+  const relatedPlaces = await getRelatedPlaces({
+    id: place.id,
+    category: place.category,
+    countryId: place.countryId,
+    cityId: place.cityId,
+    district: place.district,
+    latitude: place.latitude,
+    longitude: place.longitude,
+  });
 
   // fire-and-forget view logging — never blocks the render
   prisma.pageViewLog.create({ data: { placeId: place.id } }).catch(() => {});
@@ -207,6 +217,13 @@ export default async function PlacePage({ params }: Props) {
           </div>
         </section>
       )}
+      {nearby.length > 0 && (
+        <section className="mt-16">
+          {/* ...existing Nearby section, unchanged... */}
+        </section>
+      )}
+
+      <RelatedPlacesSection places={relatedPlaces} />
     </article>
   );
 }

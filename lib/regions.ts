@@ -30,3 +30,12 @@ export function getRegion(key: string): Region {
     if (!region) throw new Error(`Unknown region "${key}". Add it to lib/regions.ts first.`);
     return region;
 }
+/** Converts a region's bbox into a center point + radius, for providers that take circle-based search (Google Nearby Search, Geoapify Places). */
+export function regionToCenterAndRadius(bbox: [number, number, number, number]) {
+    const [south, west, north, east] = bbox;
+    const latitude = (south + north) / 2;
+    const longitude = (west + east) / 2;
+    const latMeters = ((north - south) * 111_000) / 2;
+    const radiusMeters = Math.min(50_000, Math.max(1_000, latMeters));
+    return { latitude, longitude, radiusMeters };
+}

@@ -155,6 +155,14 @@ model Place {
   refreshStatus RefreshStatus @default(STABLE)
   imageStatus   ImageStatus   @default(PENDING)
 
+  // Google Places identity — see lib/google/ for the compliance design.
+  // Only place_id (indefinite) and coordinates (30 days) are ever persisted
+  // from Google; every other Google field requires admin re-authoring
+  // through the normal editor before it becomes real HorizonSpot content.
+  googlePlaceId       String?   @unique
+  provider String? // "google" | "geoapify" — set only for provider-discovered places; OSM/manual places leave this null
+  coordinatesSource   String?   // "osm" | "google" | "manual" | "nominatim"
+  coordinatesCachedAt DateTime?
   featured      Boolean       @default(false)
   viewCount     Int           @default(0)
 
@@ -178,6 +186,7 @@ model Place {
   pageViews     PageViewLog[]
   ingestionLogs IngestionLog[]
   tiktokPosts   TikTokPost[]
+  googleCandidate GooglePlaceCandidate?
 
   @@index([category, countryId, cityId])
   @@index([status])
@@ -511,4 +520,63 @@ model TikTokPublishingLog {
 
   @@index([postId])
   @@map("tiktok_publishing_logs")
+}
+// ============================================================================
+// Google Places integration
+// Deliberately NOT part of the Place model's normal content flow. Google's
+// current Places API policy only exempts place_id (indefinite) and
+// coordinates (30 days) from storage restrictions — every other field
+// (name, address, phone, rating, photos) must never be persisted from
+// Google directly. GooglePlaceCandidate is a quarantine queue: an admin
+// reviews and re-authors a candidate through the normal place editor before
+// it ever becomes real, published HorizonSpot content in the Place table.
+// ============================================================================
+
+enum GoogleCandidateStatus {
+  NEW
+  PROMOTED   // an admin reviewed it and created/linked a real Place
+  REJECTED   // an admin reviewed it and declined it
+  EXPIRED    // never reviewed within the retention window — see cron/google-cleanup
+}
+
+model GooglePlaceCandidate {
+  id              String                @id @default(cuid())
+  googlePlaceId   String                @unique
+
+  // Internal-only fields for the admin review queue — never rendered on any
+  // public page. Treated as a draft label, not stored/redistributed content.
+  displayNameRaw  String
+  categoryGuess   PlaceCategory?
+  latitude        Float
+  longitude       Float
+  rawTypes        Json                  // Google's `types` array, for debugging the category mapping
+
+  source          String                @default("google-places-discovery") // "google-places-discovery" | "google-search-fallback"
+  provider String @default("google") // "google" | "geoapify" — which API actually supplied this candidate
+  regionKey       String?               // which region/query surfaced this, for observability
+
+  status          GoogleCandidateStatus @default(NEW)
+  promotedPlaceId String?               @unique
+  promotedPlace   Place?                @relation(fields: [promotedPlaceId], references: [id])
+
+  discoveredAt    DateTime              @default(now())
+  expiresAt       DateTime              // discoveredAt + retention window — purged by cron/google-cleanup if still NEW
+  reviewedAt      DateTime?
+
+  @@index([status, expiresAt])
+  @@map("google_place_candidates")
+}
+
+// Tracks Google Text Search calls made on behalf of live user searches, so
+// the same normalized query doesn't trigger a fresh (billable) Google
+// request within the cooldown window — the core API-cost control for the
+// search fallback path.
+model GoogleSearchLog {
+  id              String   @id @default(cuid())
+  normalizedQuery String   @unique
+  resultCount     Int
+  lastQueriedAt   DateTime @default(now())
+  queryCount      Int      @default(1)
+
+  @@map("google_search_logs")
 }
