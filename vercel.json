@@ -12,6 +12,14 @@
     {
       "path": "/api/cron/seo-intelligence",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/discovery-intelligence",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/search-console-sync",
+      "schedule": "0 7 * * *"
     }
   ]
 }

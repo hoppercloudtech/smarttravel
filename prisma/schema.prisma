@@ -96,6 +96,9 @@ model Country {
   cities    City[]
   places    Place[]
 
+  landmarks      Landmark[]
+  discoveryPages DiscoveryPage[]
+
   @@map("countries")
 }
 
@@ -110,6 +113,8 @@ model City {
   createdAt DateTime @default(now())
 
   places    Place[]
+  landmarks      Landmark[]
+  discoveryPages DiscoveryPage[]
 
   @@unique([countryId, slug])
   @@map("cities")
@@ -140,6 +145,7 @@ model Place {
   website       String?
   phone         String?
   email         String?
+  discoveryScore PlaceDiscoveryScore?
 
   // Free-form structured facts collected at ingestion time. Kept as JSON so
   // amenity/room-type shapes can vary by category without schema churn.

@@ -13,6 +13,7 @@ import { PlaceCard, type PlaceCardData } from "@/components/site/place-card";
 import { Badge } from "@/components/ui/badge";
 import { getRelatedPlaces } from "@/lib/places/relatedPlaces";
 import { RelatedPlacesSection } from "@/components/site/related-places-section";
+import { getIntentTransitions } from "@/lib/discovery/internalLinking";
 // ISR: pages are served statically and refreshed at most every 24h, but the
 // ingestion pipeline and admin edits call revalidatePath() for immediate
 // freshness on create/update — see jobs/ingest.ts and the admin place actions.
@@ -93,6 +94,7 @@ export default async function PlacePage({ params }: Props) {
     countryName: rel.toPlace.country.name,
     heroImageUrl: rel.toPlace.media[0]?.url,
   }));
+  
   const relatedPlaces = await getRelatedPlaces({
     id: place.id,
     category: place.category,
@@ -102,6 +104,7 @@ export default async function PlacePage({ params }: Props) {
     latitude: place.latitude,
     longitude: place.longitude,
   });
+  const intentTransitions = await getIntentTransitions(place.id);
 
   // fire-and-forget view logging — never blocks the render
   prisma.pageViewLog.create({ data: { placeId: place.id } }).catch(() => {});
@@ -217,9 +220,17 @@ export default async function PlacePage({ params }: Props) {
           </div>
         </section>
       )}
-      {nearby.length > 0 && (
-        <section className="mt-16">
-          {/* ...existing Nearby section, unchanged... */}
+
+      {intentTransitions.length > 0 && (
+        <section className="mt-10">
+          <h2 className="font-display text-xl mb-4">Continue exploring</h2>
+          <div className="flex flex-wrap gap-2">
+            {intentTransitions.map((t) => (
+              <a key={t.href} href={t.href} className="rounded-md border border-border bg-surface px-3 py-2 text-sm hover:border-gold/50 hover:text-gold-soft transition-colors">
+                {t.label}
+              </a>
+            ))}
+          </div>
         </section>
       )}
 

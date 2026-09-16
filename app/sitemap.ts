@@ -27,5 +27,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
+  // Only INDEXABLE discovery pages are ever included — DRAFT/RETIRED pages
+  // stay out of the sitemap entirely (Section 23's explicit "no sitemap
+  // pollution" rule).
+  const discoveryPages = await prisma.discoveryPage.findMany({
+    where: { status: "INDEXABLE" },
+    select: { slug: true, updatedAt: true },
+  });
+  const discoveryUrls: MetadataRoute.Sitemap = discoveryPages.map((d) => ({
+    url: `${SITE_URL}/discover/${d.slug}`,
+    lastModified: d.updatedAt,
+    changeFrequency: "weekly",
+    priority: 0.7,
+  }));
+
+  return [{ url: SITE_URL, changeFrequency: "daily", priority: 1.0 }, ...categoryUrls, ...discoveryUrls, ...placeUrls];
   return [{ url: SITE_URL, changeFrequency: "daily", priority: 1.0 }, ...categoryUrls, ...placeUrls];
 }
