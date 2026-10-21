@@ -92,11 +92,8 @@ function ManualSyncButton() {
         setLoading(true);
         setResult(null);
         try {
-            const res = await fetch("/api/cron/search-console-sync", {
+            const res = await fetch("/api/admin/search-console/manual-sync", {
                 method: "POST",
-                headers: {
-                    authorization: `Bearer ${process.env.NEXT_PUBLIC_INTERNAL_SERVICE_TOKEN}`,
-                },
             });
             const data = await res.json();
             setResult(`Synced ${data.sync?.synced ?? 0} rows`);
@@ -106,6 +103,7 @@ function ManualSyncButton() {
             setLoading(false);
         }
     }
+
 
     return (
         <div className="space-y-2">
