@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { categoryFromUrlSlug, CATEGORY_CONFIG } from "@/lib/categories";
-import { PlaceCard, type PlaceCardData } from "@/components/site/place-card";
+import { PlaceCard } from "@/components/site/place-card";
 import { Breadcrumbs } from "@/components/site/breadcrumbs";
+import { getVisitorCountrySlug } from "@/lib/visitorCountry";
+import { getPlacesCountryFirst } from "@/lib/places/countryFirst";
 
-export const revalidate = 21600; // 6h — listings change more often than individual place pages
+// No `revalidate` export: reading the visitor's country makes this page
+// dynamic. The data itself is still cached for 1 hour per country.
 
 type Props = { params: { category: string } };
 
@@ -25,27 +27,12 @@ export default async function CategoryPage({ params }: Props) {
   if (!category) notFound();
   const config = CATEGORY_CONFIG[category];
 
-  const places = await prisma.place.findMany({
-    where: { status: "PUBLISHED", category },
-    include: {
-      country: true,
-      city: true,
-      media: { where: { isHero: true }, take: 1 },
-      summaries: { where: { isCurrent: true }, take: 1 },
-    },
-    orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
+  const cards = await getPlacesCountryFirst({
+    countrySlug: getVisitorCountrySlug(),
+    category,
     take: 60,
+    orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
   });
-
-  const cards: PlaceCardData[] = places.map((p) => ({
-    slug: p.slug,
-    name: p.name,
-    category: p.category,
-    cityName: p.city?.name,
-    countryName: p.country.name,
-    heroImageUrl: p.media[0]?.url,
-    summarySnippet: p.summaries[0]?.content?.slice(0, 110),
-  }));
 
   return (
     <div className="container py-8">

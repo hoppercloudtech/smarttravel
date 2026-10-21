@@ -1,93 +1,35 @@
 import type { PlaceCategory } from "@prisma/client";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
-import { PlaceCard, type PlaceCardData } from "@/components/site/place-card";
+import { PlaceCard } from "@/components/site/place-card";
 import { SearchBar } from "@/components/site/search-bar";
 import { CATEGORY_CONFIG } from "@/lib/categories";
+import { getVisitorCountrySlug } from "@/lib/visitorCountry";
+import { getPlacesCountryFirst } from "@/lib/places/countryFirst";
 
-export const revalidate = 3600;
-
-async function getFeaturedPlaces(): Promise<PlaceCardData[]> {
-  const places = await prisma.place.findMany({
-    where: { status: "PUBLISHED", featured: true },
-    take: 8,
-    include: {
-      country: true,
-      city: true,
-      media: {
-        where: { isHero: true },
-        take: 1,
-      },
-      summaries: {
-        where: { isCurrent: true },
-        take: 1,
-      },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-  });
-
-  return places.map((p) => ({
-    slug: p.slug,
-    name: p.name,
-    category: p.category,
-    cityName: p.city?.name,
-    countryName: p.country.name,
-    heroImageUrl: p.media[0]?.url,
-    summarySnippet: p.summaries[0]?.content?.slice(0, 110),
-  }));
-}
-
-
-async function getCategoryPlaces(
-  category: PlaceCategory
-): Promise<PlaceCardData[]> {
-  const places = await prisma.place.findMany({
-    where: {
-      status: "PUBLISHED",
-      category,
-    },
-    take: 4,
-    include: {
-      country: true,
-      city: true,
-      media: {
-        where: { isHero: true },
-        take: 1,
-      },
-      summaries: {
-        where: { isCurrent: true },
-        take: 1,
-      },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-  });
-
-  return places.map((p) => ({
-    slug: p.slug,
-    name: p.name,
-    category: p.category,
-    cityName: p.city?.name,
-    countryName: p.country.name,
-    heroImageUrl: p.media[0]?.url,
-    summarySnippet: p.summaries[0]?.content?.slice(0, 110),
-  }));
-}
-
+// No `revalidate` export: reading the visitor's country makes this page
+// dynamic. The data itself is still cached for 1 hour per country.
 
 export default async function HomePage() {
-  const featured = await getFeaturedPlaces();
+  const countrySlug = getVisitorCountrySlug();
+
+  const featured = await getPlacesCountryFirst({
+    countrySlug,
+    featuredOnly: true,
+    take: 8,
+    orderBy: [{ updatedAt: "desc" }],
+  });
 
   const categorySections = await Promise.all(
     Object.entries(CATEGORY_CONFIG).map(async ([category, config]) => ({
       config,
-      places: await getCategoryPlaces(category as PlaceCategory),
+      places: await getPlacesCountryFirst({
+        countrySlug,
+        category: category as PlaceCategory,
+        take: 4,
+        orderBy: [{ updatedAt: "desc" }],
+      }),
     }))
   );
-
 
   return (
     <main>
