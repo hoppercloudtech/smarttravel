@@ -68,16 +68,16 @@ enum IngestionRunStatus {
 // ---------------------------------------------------------------------------
 
 model AdminUser {
-  id            String    @id @default(cuid())
-  name          String
-  email         String    @unique
-  passwordHash  String
-  role          AdminRole @default(EDITOR)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(EDITOR)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  placesCreated Place[]   @relation("PlaceCreatedBy")
-  placesUpdated Place[]   @relation("PlaceUpdatedBy")
+  placesCreated Place[] @relation("PlaceCreatedBy")
+  placesUpdated Place[] @relation("PlaceUpdatedBy")
 
   @@map("admin_users")
 }
@@ -93,8 +93,8 @@ model Country {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  cities    City[]
-  places    Place[]
+  cities City[]
+  places Place[]
 
   landmarks      Landmark[]
   discoveryPages DiscoveryPage[]
@@ -112,7 +112,7 @@ model City {
   longitude Float?
   createdAt DateTime @default(now())
 
-  places    Place[]
+  places         Place[]
   landmarks      Landmark[]
   discoveryPages DiscoveryPage[]
 
@@ -125,41 +125,41 @@ model City {
 // ---------------------------------------------------------------------------
 
 model Place {
-  id            String        @id @default(cuid())
-  name          String
-  slug          String        @unique
-  category      PlaceCategory
-  status        PlaceStatus   @default(DRAFT)
+  id       String        @id @default(cuid())
+  name     String
+  slug     String        @unique
+  category PlaceCategory
+  status   PlaceStatus   @default(DRAFT)
 
-  countryId     String
-  country       Country       @relation(fields: [countryId], references: [id])
-  cityId        String?
-  city          City?         @relation(fields: [cityId], references: [id])
-  district      String?
+  countryId String
+  country   Country @relation(fields: [countryId], references: [id])
+  cityId    String?
+  city      City?   @relation(fields: [cityId], references: [id])
+  district  String?
 
   latitude      Float?
   longitude     Float?
   address       String?
   googleMapsUrl String?
 
-  website       String?
-  phone         String?
-  email         String?
+  website        String?
+  phone          String?
+  email          String?
   discoveryScore PlaceDiscoveryScore?
 
   // Free-form structured facts collected at ingestion time. Kept as JSON so
   // amenity/room-type shapes can vary by category without schema churn.
-  amenities     Json?         // e.g. ["Free WiFi", "Pool", "Airport Shuttle"]
-  roomTypes     Json?         // e.g. [{ "name": "Deluxe King", "notes": "..." }]
+  amenities Json? // e.g. ["Free WiFi", "Pool", "Airport Shuttle"]
+  roomTypes Json? // e.g. [{ "name": "Deluxe King", "notes": "..." }]
 
-  description   String?       // raw / source description, NOT the AI summary
-  priceLevel    Int?          // 1-4, optional signal only
+  description String? // raw / source description, NOT the AI summary
+  priceLevel  Int? // 1-4, optional signal only
 
-  source        String?       // where this record was ingested from
-  sourceRef     String?       // external id/url for de-duplication
+  source    String? // where this record was ingested from
+  sourceRef String? // external id/url for de-duplication
 
-  refreshStatus RefreshStatus @default(STABLE)
-  imageStatus   ImageStatus   @default(PENDING)
+  refreshStatus          RefreshStatus @default(STABLE)
+  imageStatus            ImageStatus   @default(PENDING)
   lastSeoHealthCheckedAt DateTime? // drives the health-check batch's "oldest first" ordering — see jobs/seoIntelligence.ts
 
   // Google Places identity — see lib/google/ for the compliance design.
@@ -167,34 +167,34 @@ model Place {
   // from Google; every other Google field requires admin re-authoring
   // through the normal editor before it becomes real HorizonSpot content.
   googlePlaceId       String?   @unique
-  provider String? // "google" | "geoapify" — set only for provider-discovered places; OSM/manual places leave this null
-  coordinatesSource   String?   // "osm" | "google" | "manual" | "nominatim"
+  provider            String? // "google" | "geoapify" — set only for provider-discovered places; OSM/manual places leave this null
+  coordinatesSource   String? // "osm" | "google" | "manual" | "nominatim"
   coordinatesCachedAt DateTime?
-  featured      Boolean       @default(false)
-  viewCount     Int           @default(0)
+  featured            Boolean   @default(false)
+  viewCount           Int       @default(0)
 
-  createdById   String?
-  createdBy     AdminUser?    @relation("PlaceCreatedBy", fields: [createdById], references: [id])
-  updatedById   String?
-  updatedBy     AdminUser?    @relation("PlaceUpdatedBy", fields: [updatedById], references: [id])
+  createdById String?
+  createdBy   AdminUser? @relation("PlaceCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   AdminUser? @relation("PlaceUpdatedBy", fields: [updatedById], references: [id])
 
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  media         PlaceMedia[]
-  summaries     AISummary[]
-  seoMeta       SEOMeta?
-  faqs          PlaceFAQ[]
+  media     PlaceMedia[]
+  summaries AISummary[]
+  seoMeta   SEOMeta?
+  faqs      PlaceFAQ[]
 
-  nearbyFrom    NearbyRelation[] @relation("NearbyFromPlace")
-  nearbyTo      NearbyRelation[] @relation("NearbyToPlace")
+  nearbyFrom NearbyRelation[] @relation("NearbyFromPlace")
+  nearbyTo   NearbyRelation[] @relation("NearbyToPlace")
 
-  searchLogs    SearchQueryLog[]
-  pageViews     PageViewLog[]
-  ingestionLogs IngestionLog[]
-  tiktokPosts   TikTokPost[]
+  searchLogs      SearchQueryLog[]
+  pageViews       PageViewLog[]
+  ingestionLogs   IngestionLog[]
+  tiktokPosts     TikTokPost[]
   googleCandidate GooglePlaceCandidate?
-  seoInsights SeoInsight[]
+  seoInsights     SeoInsight[]
 
   @@index([category, countryId, cityId])
   @@index([status])
@@ -203,22 +203,22 @@ model Place {
 }
 
 model PlaceMedia {
-  id           String   @id @default(cuid())
-  placeId      String
-  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  placeId String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
-  cloudinaryId String   // Cloudinary public_id — used for transformations & deletion
-  url          String   // secure_url returned by Cloudinary
+  cloudinaryId String // Cloudinary public_id — used for transformations & deletion
+  url          String // secure_url returned by Cloudinary
   altText      String?
   width        Int?
   height       Int?
-  order        Int      @default(0)
-  isHero       Boolean  @default(false)
+  order        Int     @default(0)
+  isHero       Boolean @default(false)
 
-  license      String?  // e.g. "business-submitted", "wikimedia-cc-by-sa", "official-media"
-  sourceUrl    String?  // attribution / provenance
+  license   String? // e.g. "business-submitted", "wikimedia-cc-by-sa", "official-media"
+  sourceUrl String? // attribution / provenance
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([placeId, order])
   @@map("place_media")
@@ -227,50 +227,50 @@ model PlaceMedia {
 // Versioned AI summaries. `isCurrent` marks the one actually rendered on the
 // public page — older versions are kept for audit/rollback, never deleted.
 model AISummary {
-  id           String   @id @default(cuid())
-  placeId      String
-  place        Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  placeId String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
-  content      String   @db.Text
-  faqJson      Json?    // [{ "question": "...", "answer": "..." }]
+  content String @db.Text
+  faqJson Json? // [{ "question": "...", "answer": "..." }]
 
   model        String
-  promptTokens Int      @default(0)
-  outputTokens Int      @default(0)
-  estCostUsd   Float    @default(0)
+  promptTokens Int    @default(0)
+  outputTokens Int    @default(0)
+  estCostUsd   Float  @default(0)
 
-  isCurrent    Boolean  @default(true)
-  generatedAt  DateTime @default(now())
-  triggeredBy  String   // "ingestion" | "manual-regenerate" | "scheduled-refresh"
+  isCurrent   Boolean  @default(true)
+  generatedAt DateTime @default(now())
+  triggeredBy String // "ingestion" | "manual-regenerate" | "scheduled-refresh"
 
   @@index([placeId, isCurrent])
   @@map("ai_summaries")
 }
 
 model PlaceFAQ {
-  id        String   @id @default(cuid())
-  placeId   String
-  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  question  String
-  answer    String   @db.Text
-  order     Int      @default(0)
+  id       String @id @default(cuid())
+  placeId  String
+  place    Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  question String
+  answer   String @db.Text
+  order    Int    @default(0)
 
   @@index([placeId])
   @@map("place_faqs")
 }
 
 model SEOMeta {
-  id              String   @id @default(cuid())
-  placeId         String   @unique
-  place           Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  placeId String @unique
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
-  title           String
-  description     String
-  canonicalPath   String   // e.g. "/hotel/speke-resort-munyonyo"
-  ogImageUrl      String?
-  structuredData  Json?    // pre-rendered JSON-LD override, optional — usually generated on the fly
+  title          String
+  description    String
+  canonicalPath  String // e.g. "/hotel/speke-resort-munyonyo"
+  ogImageUrl     String?
+  structuredData Json? // pre-rendered JSON-LD override, optional — usually generated on the fly
 
-  updatedAt       DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("seo_meta")
 }
@@ -278,15 +278,15 @@ model SEOMeta {
 // Precomputed proximity/category relationships — powers "Nearby" and
 // "Similar Places" without a live geo-query on every page load.
 model NearbyRelation {
-  id           String   @id @default(cuid())
-  fromPlaceId  String
-  fromPlace    Place    @relation("NearbyFromPlace", fields: [fromPlaceId], references: [id], onDelete: Cascade)
-  toPlaceId    String
-  toPlace      Place    @relation("NearbyToPlace", fields: [toPlaceId], references: [id], onDelete: Cascade)
+  id          String @id @default(cuid())
+  fromPlaceId String
+  fromPlace   Place  @relation("NearbyFromPlace", fields: [fromPlaceId], references: [id], onDelete: Cascade)
+  toPlaceId   String
+  toPlace     Place  @relation("NearbyToPlace", fields: [toPlaceId], references: [id], onDelete: Cascade)
 
   distanceKm   Float?
-  relationType String   @default("nearby") // "nearby" | "similar"
-  rank         Int      @default(0)
+  relationType String @default("nearby") // "nearby" | "similar"
+  rank         Int    @default(0)
 
   @@unique([fromPlaceId, toPlaceId, relationType])
   @@index([fromPlaceId, relationType, rank])
@@ -298,39 +298,39 @@ model NearbyRelation {
 // ---------------------------------------------------------------------------
 
 model IngestionBatch {
-  id          String             @id @default(cuid())
-  label       String             // e.g. "uganda-kampala-hotels-2026-07-20"
-  country     String?
-  category    PlaceCategory?
-  status      IngestionRunStatus @default(RUNNING)
+  id       String             @id @default(cuid())
+  label    String // e.g. "uganda-kampala-hotels-2026-07-20"
+  country  String?
+  category PlaceCategory?
+  status   IngestionRunStatus @default(RUNNING)
 
-  totalFound     Int @default(0)
-  totalInserted  Int @default(0)
-  totalUpdated   Int @default(0)
-  totalSkipped   Int @default(0)
-  totalFailed    Int @default(0)
+  totalFound    Int @default(0)
+  totalInserted Int @default(0)
+  totalUpdated  Int @default(0)
+  totalSkipped  Int @default(0)
+  totalFailed   Int @default(0)
 
-  startedAt   DateTime           @default(now())
-  finishedAt  DateTime?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
 
-  logs        IngestionLog[]
+  logs IngestionLog[]
 
   @@map("ingestion_batches")
 }
 
 model IngestionLog {
-  id         String   @id @default(cuid())
-  batchId    String
-  batch      IngestionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  id      String         @id @default(cuid())
+  batchId String
+  batch   IngestionBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
-  placeId    String?
-  place      Place?   @relation(fields: [placeId], references: [id])
+  placeId String?
+  place   Place?  @relation(fields: [placeId], references: [id])
 
-  stage      String   // "discover" | "normalize" | "enrich" | "persist" | "queue-ai" | "revalidate"
-  status     String   // "success" | "skipped" | "failed"
-  message    String?  @db.Text
+  stage   String // "discover" | "normalize" | "enrich" | "persist" | "queue-ai" | "revalidate"
+  status  String // "success" | "skipped" | "failed"
+  message String? @db.Text
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([batchId])
   @@map("ingestion_logs")
@@ -342,12 +342,12 @@ model IngestionLog {
 // ---------------------------------------------------------------------------
 
 model SearchQueryLog {
-  id        String   @id @default(cuid())
-  query     String
+  id           String   @id @default(cuid())
+  query        String
   resultsCount Int
-  placeId   String?  // set if the user clicked through to a specific place
-  place     Place?   @relation(fields: [placeId], references: [id])
-  createdAt DateTime @default(now())
+  placeId      String? // set if the user clicked through to a specific place
+  place        Place?   @relation(fields: [placeId], references: [id])
+  createdAt    DateTime @default(now())
 
   @@index([query])
   @@map("search_query_logs")
@@ -379,8 +379,8 @@ enum TikTokAccountStatus {
 
 enum TikTokPostStatus {
   PENDING_REVIEW // approvalRequired=true and not yet approved by an admin
-  SCHEDULED      // approved (or auto-approved) and waiting for scheduledFor
-  PUBLISHING     // publish attempt currently in flight
+  SCHEDULED // approved (or auto-approved) and waiting for scheduledFor
+  PUBLISHING // publish attempt currently in flight
   PUBLISHED
   FAILED
   CANCELLED
@@ -388,30 +388,30 @@ enum TikTokPostStatus {
 
 enum TikTokMediaType {
   PHOTO_CAROUSEL // supported now — TikTok's Content Posting API photo endpoint
-  VIDEO          // modeled for the future; no generator wired in yet
+  VIDEO // modeled for the future; no generator wired in yet
 }
 
 model TikTokAccount {
-  id                String              @id @default(cuid())
-  openId            String              @unique // TikTok's stable user identifier
-  username          String?
+  id       String  @id @default(cuid())
+  openId   String  @unique // TikTok's stable user identifier
+  username String?
 
   // Tokens are encrypted at rest with lib/tiktok/crypto.ts (AES-256-GCM)
   // before being written here — never store raw OAuth tokens in the DB.
-  accessTokenEnc    String              @db.Text
-  refreshTokenEnc   String              @db.Text
-  scope             String              // space-separated granted scopes, e.g. "video.publish user.info.basic"
-  expiresAt         DateTime
-  refreshExpiresAt  DateTime?
+  accessTokenEnc   String    @db.Text
+  refreshTokenEnc  String    @db.Text
+  scope            String // space-separated granted scopes, e.g. "video.publish user.info.basic"
+  expiresAt        DateTime
+  refreshExpiresAt DateTime?
 
-  status            TikTokAccountStatus @default(ACTIVE)
-  isAudited         Boolean             @default(false) // false = posts publish as SELF_ONLY only, see lib/tiktok/client.ts
+  status    TikTokAccountStatus @default(ACTIVE)
+  isAudited Boolean             @default(false) // false = posts publish as SELF_ONLY only, see lib/tiktok/client.ts
 
-  connectedAt       DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  connectedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  settings          TikTokPostingSettings?
-  posts             TikTokPost[]
+  settings TikTokPostingSettings?
+  posts    TikTokPost[]
 
   @@map("tiktok_accounts")
 }
@@ -420,31 +420,31 @@ model TikTokAccount {
 // behavior the project brief asks to be "configurable, not hard-coded"
 // lives here, read fresh by the queue builder on every run.
 model TikTokPostingSettings {
-  id                     String        @id @default(cuid())
-  accountId              String        @unique
-  account                TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id        String        @id @default(cuid())
+  accountId String        @unique
+  account   TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  dailyPostCount         Int      @default(5)
-  minHotelPostsPerDay    Int      @default(2)
-  autoPublish            Boolean  @default(false) // OFF by default — an admin opts in deliberately
-  approvalRequired       Boolean  @default(true)
+  dailyPostCount      Int     @default(5)
+  minHotelPostsPerDay Int     @default(2)
+  autoPublish         Boolean @default(false) // OFF by default — an admin opts in deliberately
+  approvalRequired    Boolean @default(true)
 
-  cooldownDays           Int      @default(30) // minimum days before the same Place can be reposted
+  cooldownDays Int @default(30) // minimum days before the same Place can be reposted
 
   // Posting windows as 24h "HH:mm" strings in the given IANA timezone —
   // the queue builder spreads dailyPostCount posts across these windows
   // rather than clustering them. Kept as JSON so window/count can change
   // without a migration.
-  postingTimezone        String   @default("UTC")
-  postingWindows         Json     @default("[\"08:00\",\"11:00\",\"14:00\",\"18:00\",\"21:00\"]")
+  postingTimezone String @default("UTC")
+  postingWindows  Json   @default("[\"08:00\",\"11:00\",\"14:00\",\"18:00\",\"21:00\"]")
 
   // Scoring weights (0-1) — see lib/tiktok/scoring.ts.
-  scoringWeights         Json     @default("{\"popularity\":0.35,\"freshness\":0.2,\"imageQuality\":0.15,\"categoryDiversity\":0.15,\"geoDiversity\":0.15}")
+  scoringWeights Json @default("{\"popularity\":0.35,\"freshness\":0.2,\"imageQuality\":0.15,\"categoryDiversity\":0.15,\"geoDiversity\":0.15}")
 
-  hashtagBaseTags        Json     @default("[\"Travel\",\"TravelTok\",\"Explore\"]")
-  ctaVariants            Json     @default("[\"Discover more through the link in our bio.\",\"Explore more places through our website.\",\"Find your next destination — link in bio.\"]")
+  hashtagBaseTags Json @default("[\"Travel\",\"TravelTok\",\"Explore\"]")
+  ctaVariants     Json @default("[\"Discover more through the link in our bio.\",\"Explore more places through our website.\",\"Find your next destination — link in bio.\"]")
 
-  updatedAt              DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("tiktok_posting_settings")
 }
@@ -455,61 +455,61 @@ model TikTokPostingSettings {
 // sound comes from whatever audio is baked into the uploaded file. Manually
 // maintained, not scraped.
 model TikTokTrack {
-  id          String   @id @default(cuid())
-  label       String   // e.g. "Upbeat Travel Loop A"
-  fileUrl     String   // Cloudinary (or other) URL to the licensed audio file
-  moodTags    Json     @default("[]") // e.g. ["upbeat","cinematic","chill"]
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  label     String // e.g. "Upbeat Travel Loop A"
+  fileUrl   String // Cloudinary (or other) URL to the licensed audio file
+  moodTags  Json     @default("[]") // e.g. ["upbeat","cinematic","chill"]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
-  posts       TikTokPost[]
+  posts TikTokPost[]
 
   @@map("tiktok_tracks")
 }
 
 model TikTokPost {
-  id              String            @id @default(cuid())
+  id String @id @default(cuid())
 
-  accountId       String
-  account         TikTokAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  account   TikTokAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
-  placeId         String
-  place           Place             @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  placeId String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
-  status          TikTokPostStatus  @default(PENDING_REVIEW)
-  mediaType       TikTokMediaType   @default(PHOTO_CAROUSEL)
-  mediaUrls       Json              // snapshot of the Cloudinary URLs used, frozen at selection time
+  status    TikTokPostStatus @default(PENDING_REVIEW)
+  mediaType TikTokMediaType  @default(PHOTO_CAROUSEL)
+  mediaUrls Json // snapshot of the Cloudinary URLs used, frozen at selection time
 
-  trackId         String?
-  track           TikTokTrack?      @relation(fields: [trackId], references: [id])
+  trackId String?
+  track   TikTokTrack? @relation(fields: [trackId], references: [id])
 
-  caption         String            @db.Text
-  hashtags        Json              // string[]
-  ctaVariant      String?
+  caption    String  @db.Text
+  hashtags   Json // string[]
+  ctaVariant String?
 
-  selectionScore  Float             // the score this Place got when chosen — feeds later analytics/tuning
-  selectionReason Json?             // e.g. {"popularity":0.8,"trendingHotelSlot":true} — powers "why was it selected?"
+  selectionScore  Float // the score this Place got when chosen — feeds later analytics/tuning
+  selectionReason Json? // e.g. {"popularity":0.8,"trendingHotelSlot":true} — powers "why was it selected?"
 
-  scheduledFor    DateTime
-  publishedAt     DateTime?
+  scheduledFor DateTime
+  publishedAt  DateTime?
 
-  tiktokPublishId String?           // TikTok's publish_id / video id once published
-  errorMessage    String?           @db.Text
-  attemptCount    Int               @default(0)
+  tiktokPublishId String? // TikTok's publish_id / video id once published
+  errorMessage    String? @db.Text
+  attemptCount    Int     @default(0)
 
   // Analytics — populated by a future metrics-refresh job, out of scope
   // for this pass (needs the TikTok Display/Analytics API wired in).
-  views           Int?
-  likes           Int?
-  comments        Int?
-  shares          Int?
-  profileVisits   Int?
-  websiteClicks   Int?
+  views         Int?
+  likes         Int?
+  comments      Int?
+  shares        Int?
+  profileVisits Int?
+  websiteClicks Int?
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  logs            TikTokPublishingLog[]
+  logs TikTokPublishingLog[]
 
   @@index([status, scheduledFor])
   @@index([placeId])
@@ -517,18 +517,19 @@ model TikTokPost {
 }
 
 model TikTokPublishingLog {
-  id        String     @id @default(cuid())
-  postId    String
-  post      TikTokPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  id     String     @id @default(cuid())
+  postId String
+  post   TikTokPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
-  event     String     // "queued" | "validation_failed" | "publish_attempt" | "publish_success" | "publish_failed" | "retried" | "cancelled"
-  message   String?    @db.Text
+  event   String // "queued" | "validation_failed" | "publish_attempt" | "publish_success" | "publish_failed" | "retried" | "cancelled"
+  message String? @db.Text
 
-  createdAt DateTime   @default(now())
+  createdAt DateTime @default(now())
 
   @@index([postId])
   @@map("tiktok_publishing_logs")
 }
+
 // ============================================================================
 // Google Places integration
 // Deliberately NOT part of the Place model's normal content flow. Google's
@@ -542,34 +543,34 @@ model TikTokPublishingLog {
 
 enum GoogleCandidateStatus {
   NEW
-  PROMOTED   // an admin reviewed it and created/linked a real Place
-  REJECTED   // an admin reviewed it and declined it
-  EXPIRED    // never reviewed within the retention window — see cron/google-cleanup
+  PROMOTED // an admin reviewed it and created/linked a real Place
+  REJECTED // an admin reviewed it and declined it
+  EXPIRED // never reviewed within the retention window — see cron/google-cleanup
 }
 
 model GooglePlaceCandidate {
-  id              String                @id @default(cuid())
-  googlePlaceId   String                @unique
+  id            String @id @default(cuid())
+  googlePlaceId String @unique
 
   // Internal-only fields for the admin review queue — never rendered on any
   // public page. Treated as a draft label, not stored/redistributed content.
-  displayNameRaw  String
-  categoryGuess   PlaceCategory?
-  latitude        Float
-  longitude       Float
-  rawTypes        Json                  // Google's `types` array, for debugging the category mapping
+  displayNameRaw String
+  categoryGuess  PlaceCategory?
+  latitude       Float
+  longitude      Float
+  rawTypes       Json // Google's `types` array, for debugging the category mapping
 
-  source          String                @default("google-places-discovery") // "google-places-discovery" | "google-search-fallback"
-  provider String @default("google") // "google" | "geoapify" — which API actually supplied this candidate
-  regionKey       String?               // which region/query surfaced this, for observability
+  source    String  @default("google-places-discovery") // "google-places-discovery" | "google-search-fallback"
+  provider  String  @default("google") // "google" | "geoapify" — which API actually supplied this candidate
+  regionKey String? // which region/query surfaced this, for observability
 
   status          GoogleCandidateStatus @default(NEW)
   promotedPlaceId String?               @unique
   promotedPlace   Place?                @relation(fields: [promotedPlaceId], references: [id])
 
-  discoveredAt    DateTime              @default(now())
-  expiresAt       DateTime              // discoveredAt + retention window — purged by cron/google-cleanup if still NEW
-  reviewedAt      DateTime?
+  discoveredAt DateTime  @default(now())
+  expiresAt    DateTime // discoveredAt + retention window — purged by cron/google-cleanup if still NEW
+  reviewedAt   DateTime?
 
   @@index([status, expiresAt])
   @@map("google_place_candidates")
@@ -588,6 +589,7 @@ model GoogleSearchLog {
 
   @@map("google_search_logs")
 }
+
 // ============================================================================
 // SEO Intelligence
 // One model, not five (SEOPage/Opportunity/Recommendation collapsed into a
@@ -598,33 +600,34 @@ model GoogleSearchLog {
 // ============================================================================
 
 enum SeoInsightKind {
-  OPPORTUNITY   // location x category page-worthiness evaluation
-  HEALTH_CHECK  // per-place SEO completeness check
+  OPPORTUNITY // location x category page-worthiness evaluation
+  HEALTH_CHECK // per-place SEO completeness check
 }
 
 model SeoInsight {
-  id             String         @id @default(cuid())
-  kind           SeoInsightKind
+  id   String         @id @default(cuid())
+  kind SeoInsightKind
 
   // OPPORTUNITY fields — null when kind = HEALTH_CHECK
   countryId      String?
   cityId         String?
   category       PlaceCategory?
   placeCount     Int?
-  recommendation String?        // "CREATE" | "OPTIMIZE" | "MONITOR" | "DO_NOT_CREATE"
+  recommendation String? // "CREATE" | "OPTIMIZE" | "MONITOR" | "DO_NOT_CREATE"
 
   // HEALTH_CHECK fields — null when kind = OPPORTUNITY
-  placeId        String?
-  place          Place?         @relation(fields: [placeId], references: [id], onDelete: Cascade)
-  checks         Json?          // SeoHealthCheck[] — see lib/seo/health.ts
+  placeId String?
+  place   Place?  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  checks  Json? // SeoHealthCheck[] — see lib/seo/health.ts
 
-  score          Float          // 0-100 for both kinds
-  computedAt     DateTime       @default(now())
+  score      Float // 0-100 for both kinds
+  computedAt DateTime @default(now())
 
   @@index([kind, score])
   @@index([placeId])
   @@map("seo_insights")
 }
+
 // ============================================================================
 // Global Location Graph (Section 6)
 // ============================================================================
@@ -648,19 +651,19 @@ model Location {
   type           LocationType
   name           String
   slug           String
-  alternateNames Json?        // string[]
-  countryCode    String?      // ISO 3166-1 alpha-2
+  alternateNames Json? // string[]
+  countryCode    String? // ISO 3166-1 alpha-2
 
-  latitude       Float?
-  longitude      Float?
+  latitude  Float?
+  longitude Float?
 
-  parentId       String?
-  parent         Location?    @relation("LocationHierarchy", fields: [parentId], references: [id])
-  children       Location[]   @relation("LocationHierarchy")
+  parentId String?
+  parent   Location?  @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children Location[] @relation("LocationHierarchy")
 
-  geonameId      Int?         @unique // external identity for re-import dedup — same role as googlePlaceId elsewhere
+  geonameId Int? @unique // external identity for re-import dedup — same role as googlePlaceId elsewhere
 
-  createdAt      DateTime     @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([countryCode, type, slug])
   @@index([parentId])
@@ -678,7 +681,7 @@ model Landmark {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
-  type      String   // "airport" | "attraction" | "transit_hub" | "other" — free text, admin sets it, not a rigid enum
+  type      String // "airport" | "attraction" | "transit_hub" | "other" — free text, admin sets it, not a rigid enum
   latitude  Float
   longitude Float
   countryId String
@@ -698,9 +701,9 @@ model Landmark {
 // ============================================================================
 
 model PlaceDiscoveryScore {
-  id                String   @id @default(cuid())
-  placeId           String   @unique
-  place             Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  placeId String @unique
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
   popularityScore   Float
   freshnessScore    Float
@@ -709,7 +712,7 @@ model PlaceDiscoveryScore {
   discoveryScore    Float // popularity+freshness+completeness composite, editorial excluded on purpose
   horizonScore      Float // final combined score — default sort order on discovery pages
 
-  computedAt        DateTime @default(now())
+  computedAt DateTime @default(now())
 
   @@index([horizonScore])
   @@map("place_discovery_scores")
@@ -728,33 +731,33 @@ enum DiscoveryPageType {
 }
 
 enum DiscoveryPageStatus {
-  DRAFT      // quality gate passed, not yet public
-  INDEXABLE  // live, in sitemap
-  RETIRED    // quality dropped on recompute — deindexed, URL preserved (never deleted, avoids orphaning)
+  DRAFT // quality gate passed, not yet public
+  INDEXABLE // live, in sitemap
+  RETIRED // quality dropped on recompute — deindexed, URL preserved (never deleted, avoids orphaning)
 }
 
 model DiscoveryPage {
-  id           String              @id @default(cuid())
-  pageType     DiscoveryPageType
-  slug         String              @unique
+  id       String            @id @default(cuid())
+  pageType DiscoveryPageType
+  slug     String            @unique
 
-  countryId    String?
-  country      Country?            @relation(fields: [countryId], references: [id])
-  cityId       String?
-  city         City?               @relation(fields: [cityId], references: [id])
-  landmarkId   String?
-  landmark     Landmark?           @relation(fields: [landmarkId], references: [id])
-  category     PlaceCategory
+  countryId  String?
+  country    Country?      @relation(fields: [countryId], references: [id])
+  cityId     String?
+  city       City?         @relation(fields: [cityId], references: [id])
+  landmarkId String?
+  landmark   Landmark?     @relation(fields: [landmarkId], references: [id])
+  category   PlaceCategory
 
   status       DiscoveryPageStatus @default(DRAFT)
   qualityScore Float
   placeCount   Int
 
-  title        String
-  description  String
+  title       String
+  description String
 
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, pageType])
   @@map("discovery_pages")
@@ -819,28 +822,28 @@ model CtrOpportunity {
 }
 
 model SeoExperiment {
-  id                String    @id @default(cuid())
+  id                String  @id @default(cuid())
   page              String
   titleBefore       String
   titleAfter        String
   descriptionBefore String?
   descriptionAfter  String?
 
-  startedAt         DateTime  @default(now())
-  endedAt           DateTime?
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
 
   impressionsBefore Int?
   clicksBefore      Int?
   ctrBefore         Float?
   positionBefore    Float?
 
-  impressionsAfter  Int?
-  clicksAfter       Int?
-  ctrAfter          Float?
-  positionAfter     Float?
+  impressionsAfter Int?
+  clicksAfter      Int?
+  ctrAfter         Float?
+  positionAfter    Float?
 
-  status            String    @default("RUNNING") // "RUNNING" | "COMPLETED" | "INCONCLUSIVE"
-  verdict           String?   @db.Text
+  status  String  @default("RUNNING") // "RUNNING" | "COMPLETED" | "INCONCLUSIVE"
+  verdict String? @db.Text
 
   @@map("seo_experiments")
 }

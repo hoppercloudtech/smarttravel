@@ -4,7 +4,8 @@ import { detectCtrOpportunities } from "@/lib/seo/ctr";
 
 export async function POST(req: NextRequest) {
     const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}`) {
+    // Allow either internal cron (no header) or manual calls with token
+    if (auth !== `Bearer ${process.env.INTERNAL_SERVICE_TOKEN}` && req.headers.get("x-vercel-cron") !== "true") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
