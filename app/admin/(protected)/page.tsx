@@ -4,15 +4,18 @@ import { StatCard } from "@/components/admin/stat-card";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { CATEGORY_CONFIG } from "@/lib/categories";
+import { ISSUE_KEYS, ISSUES } from "@/lib/placeIssues";
 
 export default async function AdminOverviewPage() {
-  const [total, byCategory, missingImages, needsReview, recent, aiCostAgg] = await Promise.all([
+  const [total, byCategory, missingImages, needsReview, recent, aiCostAgg, issueCounts] = await Promise.all([
     prisma.place.count(),
     prisma.place.groupBy({ by: ["category"], _count: true }),
     prisma.place.count({ where: { imageStatus: { in: ["PENDING", "NONE_AVAILABLE"] } } }),
     prisma.place.count({ where: { status: "NEEDS_REVIEW" } }),
     prisma.place.findMany({ orderBy: { updatedAt: "desc" }, take: 8, include: { country: true } }),
     prisma.aISummary.aggregate({ _sum: { estCostUsd: true, promptTokens: true, outputTokens: true } }),
+    // One count per "missing X" check, using the same definitions as the Places list filters.
+    Promise.all(ISSUE_KEYS.map((k) => prisma.place.count({ where: ISSUES[k].where }))),
   ]);
 
   const categoryCounts = Object.fromEntries(byCategory.map((c) => [c.category, c._count]));
@@ -35,6 +38,31 @@ export default async function AdminOverviewPage() {
           tone="teal"
         />
       </div>
+
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <CardTitle>Data quality — places missing info</CardTitle>
+          <Link href="/admin/places" className="text-xs text-gold-soft hover:underline">All places</Link>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted mb-4">Tap a card to see exactly which places are missing that field, then tap a place to edit it.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {ISSUE_KEYS.map((k, i) => {
+              const n = issueCounts[i];
+              return (
+                <Link
+                  key={k}
+                  href={`/admin/places?missing=${k}`}
+                  className="rounded-md border border-border p-4 transition-colors hover:border-gold/50"
+                >
+                  <div className="text-xs uppercase text-muted">No {ISSUES[k].label}</div>
+                  <div className={`font-display text-xl mt-1 ${n > 0 ? "text-gold-soft" : "text-teal"}`}>{n}</div>
+                </Link>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle>Places by category</CardTitle></CardHeader>

@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/search-console-sync",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/youtube-videos",
+      "schedule": "0 3 * * *"
     }
   ]
 }

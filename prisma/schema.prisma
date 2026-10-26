@@ -101,7 +101,24 @@ model Country {
 
   @@map("countries")
 }
+// Cached YouTube search results. Never searched per page view — see lib/youtube.ts.
+model PlaceVideo {
+  id      String @id @default(cuid())
+  placeId String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
 
+  videoId      String
+  title        String
+  channelTitle String?
+  thumbnailUrl String
+  order        Int     @default(0)
+
+  fetchedAt DateTime @default(now())
+
+  @@unique([placeId, videoId])
+  @@index([placeId, order])
+  @@map("place_videos")
+}
 model City {
   id        String   @id @default(cuid())
   name      String
@@ -172,6 +189,8 @@ model Place {
   coordinatesCachedAt DateTime?
   featured            Boolean   @default(false)
   viewCount           Int       @default(0)
+  videosCheckedAt DateTime? // last successful YouTube search; null = never checked
+  videos          PlaceVideo[]
 
   createdById String?
   createdBy   AdminUser? @relation("PlaceCreatedBy", fields: [createdById], references: [id])

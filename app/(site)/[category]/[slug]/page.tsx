@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { getRelatedPlaces } from "@/lib/places/relatedPlaces";
 import { RelatedPlacesSection } from "@/components/site/related-places-section";
 import { getIntentTransitions } from "@/lib/discovery/internalLinking";
+import { VideoCarousel } from "@/components/site/video-carousel";
+import { getPlaceVideos } from "@/lib/youtube";
 // ISR: pages are served statically and refreshed at most every 24h, but the
 // ingestion pipeline and admin edits call revalidatePath() for immediate
 // freshness on create/update — see jobs/ingest.ts and the admin place actions.
@@ -94,7 +96,7 @@ export default async function PlacePage({ params }: Props) {
     countryName: rel.toPlace.country.name,
     heroImageUrl: rel.toPlace.media[0]?.url,
   }));
-  
+
   const relatedPlaces = await getRelatedPlaces({
     id: place.id,
     category: place.category,
@@ -105,9 +107,10 @@ export default async function PlacePage({ params }: Props) {
     longitude: place.longitude,
   });
   const intentTransitions = await getIntentTransitions(place.id);
+  const videos = await getPlaceVideos({ id: place.id, videosCheckedAt: place.videosCheckedAt });
 
   // fire-and-forget view logging — never blocks the render
-  prisma.pageViewLog.create({ data: { placeId: place.id } }).catch(() => {});
+  prisma.pageViewLog.create({ data: { placeId: place.id } }).catch(() => { });
 
   return (
     <article className="container py-8 max-w-5xl">
@@ -173,7 +176,9 @@ export default async function PlacePage({ params }: Props) {
             </section>
           )}
 
-          {place.latitude && place.longitude && (
+          {videos.length > 0 && <VideoCarousel videos={videos} placeName={place.name} />}
+
+          {place.latitude != null && place.longitude != null && (
             <section>
               <h2 className="font-display text-2xl mb-3">Location</h2>
               <MapEmbed latitude={place.latitude} longitude={place.longitude} name={place.name} />
