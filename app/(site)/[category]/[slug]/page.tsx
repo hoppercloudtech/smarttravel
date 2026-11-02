@@ -14,11 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { getRelatedPlaces } from "@/lib/places/relatedPlaces";
 import { RelatedPlacesSection } from "@/components/site/related-places-section";
 import { getIntentTransitions } from "@/lib/discovery/internalLinking";
-import { VideoCarousel } from "@/components/site/video-carousel";
-import { getPlaceVideos } from "@/lib/youtube";
+import { VideoHero } from "@/components/site/video-hero";
+import { PhotoCarousel } from "@/components/site/photo-carousel";
 // ISR: pages are served statically and refreshed at most every 24h, but the
 // ingestion pipeline and admin edits call revalidatePath() for immediate
 // freshness on create/update — see jobs/ingest.ts and the admin place actions.
+// The YouTube cron also revalidates a page as soon as it saves a video for it.
 export const revalidate = 86400;
 export const dynamicParams = true; // allow on-demand generation for places not yet statically built
 
@@ -34,12 +35,19 @@ async function getPlace(categorySlug: string, slug: string) {
       country: true,
       city: true,
       media: { orderBy: { order: "asc" } },
+      // Saved videos only — this page never calls the YouTube API.
+      videos: { orderBy: { order: "asc" }, take: 1 },
       summaries: { where: { isCurrent: true }, take: 1 },
       faqs: { orderBy: { order: "asc" } },
       nearbyFrom: {
         include: {
           toPlace: {
-            include: { country: true, city: true, media: { where: { isHero: true }, take: 1 } },
+            include: {
+              country: true,
+              city: true,
+              media: { where: { isHero: true }, take: 1 },
+              videos: { orderBy: { order: "asc" }, take: 1 },
+            },
           },
         },
         orderBy: { rank: "asc" },
@@ -58,7 +66,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = buildSeoTitle(place);
   const description = buildSeoDescription(place);
   const canonicalPath = canonicalPathFor(place);
-  const heroImage = place.media[0]?.url;
+  const heroImage = place.media[0]?.url ?? place.videos[0]?.thumbnailUrl;
 
   return {
     title,
@@ -88,6 +96,14 @@ export default async function PlacePage({ params }: Props) {
   const summary = place.summaries[0]?.content;
   const jsonLd = buildPlaceJsonLd(place);
 
+  const primaryVideo = place.videos[0] ?? null;
+  const photos = place.media.map((m) => ({
+    url: m.url,
+    altText: m.altText,
+    license: m.license,
+    sourceUrl: m.sourceUrl,
+  }));
+
   const nearby: PlaceCardData[] = place.nearbyFrom.map((rel) => ({
     slug: rel.toPlace.slug,
     name: rel.toPlace.name,
@@ -95,6 +111,7 @@ export default async function PlacePage({ params }: Props) {
     cityName: rel.toPlace.city?.name,
     countryName: rel.toPlace.country.name,
     heroImageUrl: rel.toPlace.media[0]?.url,
+    videoThumbnailUrl: rel.toPlace.videos[0]?.thumbnailUrl,
   }));
 
   const relatedPlaces = await getRelatedPlaces({
@@ -107,13 +124,12 @@ export default async function PlacePage({ params }: Props) {
     longitude: place.longitude,
   });
   const intentTransitions = await getIntentTransitions(place.id);
-  const videos = await getPlaceVideos({ id: place.id, videosCheckedAt: place.videosCheckedAt });
 
   // fire-and-forget view logging — never blocks the render
   prisma.pageViewLog.create({ data: { placeId: place.id } }).catch(() => { });
 
   return (
-    <article className="container py-8 max-w-5xl">
+    <article className="container py-6 sm:py-8 max-w-5xl">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.place) }} />
       {jsonLd.faq && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd.faq) }} />
@@ -128,19 +144,24 @@ export default async function PlacePage({ params }: Props) {
         ]}
       />
 
-      <header className="mb-6">
+      <header className="mb-5 sm:mb-6">
         <Badge tone="gold" className="mb-3">{config.label}</Badge>
-        <h1 className="font-display text-3xl sm:text-4xl leading-tight text-balance">{place.name}</h1>
-        <p className="mt-2 flex items-center gap-1.5 text-sm text-muted">
-          <MapPin className="h-4 w-4" />
-          {[place.address, place.city?.name, place.country.name].filter(Boolean).join(", ")}
+        <h1 className="font-display text-2xl sm:text-4xl leading-tight text-balance">{place.name}</h1>
+        <p className="mt-2 flex items-start gap-1.5 text-sm text-muted">
+          <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{[place.address, place.city?.name, place.country.name].filter(Boolean).join(", ")}</span>
         </p>
       </header>
 
-      <ImageGallery images={place.media} placeName={place.name} />
+      {/* Video first; falls back to the photo gallery when no saved video exists */}
+      {primaryVideo ? (
+        <VideoHero video={primaryVideo} placeName={place.name} />
+      ) : (
+        <ImageGallery images={place.media} placeName={place.name} />
+      )}
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-10">
+      <div className="mt-8 sm:mt-10 grid gap-8 sm:gap-10 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2 space-y-8 sm:space-y-10">
           {summary && (
             <section>
               <h2 className="font-display text-2xl mb-3">Overview</h2>
@@ -176,7 +197,9 @@ export default async function PlacePage({ params }: Props) {
             </section>
           )}
 
-          {videos.length > 0 && <VideoCarousel videos={videos} placeName={place.name} />}
+          {/* Photo cards (replaces the old video cards). When there is no video the
+              photos are already in the hero gallery, so they are not repeated here. */}
+          {primaryVideo && photos.length > 0 && <PhotoCarousel photos={photos} placeName={place.name} />}
 
           {place.latitude != null && place.longitude != null && (
             <section>
@@ -216,9 +239,9 @@ export default async function PlacePage({ params }: Props) {
       </div>
 
       {nearby.length > 0 && (
-        <section className="mt-16">
-          <h2 className="font-display text-2xl mb-6">Nearby</h2>
-          <div className="grid gap-6 grid-cols-2 md:grid-cols-3">
+        <section className="mt-12 sm:mt-16">
+          <h2 className="font-display text-2xl mb-4 sm:mb-6">Nearby</h2>
+          <div className="grid gap-4 sm:gap-6 grid-cols-2 md:grid-cols-3">
             {nearby.map((p) => (
               <PlaceCard key={p.slug} place={p} />
             ))}

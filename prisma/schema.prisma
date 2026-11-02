@@ -49,7 +49,12 @@ enum ImageStatus {
   COMPLETE
   NONE_AVAILABLE
 }
-
+enum VideoDiscoveryStatus {
+  PENDING
+  FOUND
+  NONE_FOUND
+  FAILED
+}
 enum AdminRole {
   SUPER_ADMIN
   EDITOR
@@ -189,8 +194,11 @@ model Place {
   coordinatesCachedAt DateTime?
   featured            Boolean   @default(false)
   viewCount           Int       @default(0)
-  videosCheckedAt DateTime? // last successful YouTube search; null = never checked
-  videos          PlaceVideo[]
+  videosCheckedAt   DateTime? // last YouTube SEARCH for this place
+  videoStatus       VideoDiscoveryStatus @default(PENDING)
+  videoNextSearchAt DateTime? // earliest time the next search may run; null = eligible now
+  videoVerifiedAt   DateTime? // last availability check of the saved videos
+  videos            PlaceVideo[]
 
   createdById String?
   createdBy   AdminUser? @relation("PlaceCreatedBy", fields: [createdById], references: [id])
@@ -219,6 +227,7 @@ model Place {
   @@index([status])
   @@index([slug])
   @@map("places")
+  @@index([videoStatus, videoNextSearchAt])
 }
 
 model PlaceMedia {
