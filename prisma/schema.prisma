@@ -198,6 +198,10 @@ model Place {
   videoStatus       VideoDiscoveryStatus @default(PENDING)
   videoNextSearchAt DateTime? // earliest time the next search may run; null = eligible now
   videoVerifiedAt   DateTime? // last availability check of the saved videos
+  videoSearchAttempts Int       @default(0) // consecutive searches that found nothing (drives NONE_FOUND)
+  videoFailCount      Int       @default(0) // consecutive technical failures (drives exponential backoff)
+  videoLastAttemptAt  DateTime? // last attempt of any kind: success, miss or failure
+  videoLockedUntil    DateTime? // processing lock, so two workers never search the same place
   videos            PlaceVideo[]
 
   createdById String?
@@ -229,7 +233,37 @@ model Place {
   @@map("places")
   @@index([videoStatus, videoNextSearchAt])
 }
+// One row per ingestion run (admin button or cron). activeKey is unique while a
+// run is RUNNING, so two runs can never be active at the same time.
+model VideoIngestionRun {
+  id               String    @id @default(cuid())
+  mode             String // ALL | ZERO | MORE | RETRY_UNAVAILABLE | PENDING | SCHEDULED
+  status           String    @default("RUNNING") // RUNNING | COMPLETED | STOPPED | FAILED
+  activeKey        String?   @unique
+  totalQueued      Int       @default(0)
+  processed        Int       @default(0)
+  foundCount       Int       @default(0) // places that gained at least one new video
+  videosAdded      Int       @default(0)
+  unavailableCount Int       @default(0) // places marked NONE_FOUND in this run
+  failedCount      Int       @default(0)
+  stopReason       String?
+  triggeredBy      String? // "admin" | "cron"
+  startedAt        DateTime  @default(now())
+  heartbeatAt      DateTime  @default(now())
+  finishedAt       DateTime?
 
+  @@index([status, startedAt])
+  @@map("video_ingestion_runs")
+}
+
+// YouTube units this app has spent per day (the quota resets at midnight Pacific time).
+model YoutubeQuotaDay {
+  day       String   @id // e.g. "2026-11-04" (Pacific time)
+  unitsUsed Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("youtube_quota_days")
+}
 model PlaceMedia {
   id      String @id @default(cuid())
   placeId String
