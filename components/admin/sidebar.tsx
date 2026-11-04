@@ -1,33 +1,19 @@
 import Link from "next/link";
-import {
-  LayoutDashboard, MapPin, Workflow, BarChart3, LogOut, Video, Globe, Search, LayoutGrid,
-  TrendingUp,
-  MapPinned, } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { signOutAction } from "@/app/admin/actions";
+import { ADMIN_LINKS } from "@/components/admin/nav-links";
 
-const LINKS = [
-  { href: "/admin", label: "Overview", icon: LayoutDashboard },
-  { href: "/admin/places", label: "Places", icon: MapPin },
-  { href: "/admin/ingestion", label: "Ingestion", icon: Workflow },
-  { href: "/admin/google-discovery", label: "Google Discovery", icon: Globe },
-  { href: "/admin/tiktok", label: "TikTok Automation", icon: Video },
-  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/admin/seo", label: "SEO Intelligence", icon: Search },
-  { href: "/admin/seo/discovery-pages", label: "Discovery Pages", icon: LayoutGrid },
-  { href: "/admin/seo/search-console", label: "Search Console", icon: TrendingUp },
-  { href: "/admin/landmarks", label: "Landmarks", icon: MapPinned },
-];
-
+// Desktop sidebar (lg and up). Phones and tablets use AdminMobileNav instead.
 export function AdminSidebar() {
   return (
-    <aside className="w-60 shrink-0 border-r border-border bg-surface flex flex-col h-screen sticky top-0">
+    <aside className="hidden w-60 shrink-0 border-r border-border bg-surface lg:flex lg:flex-col h-screen sticky top-0">
       <div className="px-5 h-16 flex items-center border-b border-border">
         <Link href="/admin" className="font-display text-lg">
           Smart<span className="text-gold">Travel</span> <span className="text-muted text-xs align-top">admin</span>
         </Link>
       </div>
-      <nav className="flex-1 p-3 space-y-1">
-        {LINKS.map((l) => (
+      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {ADMIN_LINKS.map((l) => (
           <Link
             key={l.href}
             href={l.href}

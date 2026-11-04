@@ -3,7 +3,7 @@
 // Server-only YouTube Data API v3 client + persistent discovery state.
 //
 // Cost rules:
-//  - Pages NEVER call YouTube. They only read saved rows (see the place page).
+//  - Pages NEVER call YouTube. They only read saved rows.
 //  - search.list (100 units) runs only from the cron, in small batches, and only
 //    for places whose videoStatus is PENDING / NONE_FOUND / FAILED and whose
 //    videoNextSearchAt has passed.
@@ -12,14 +12,16 @@
 //    Deleted/private/non-embeddable videos are dropped; the next saved video is
 //    promoted, and only if none remain does the place go back to PENDING.
 
+import type { PlaceCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const API = "https://www.googleapis.com/youtube/v3";
-const MAX_VIDEOS = 3; // 1 primary + 2 spares, so a removed primary needs no new search
+const MAX_VIDEOS = Math.max(1, Math.min(10, Number(process.env.YOUTUBE_MAX_VIDEOS ?? 6)));
 const RETRY_NONE_FOUND_DAYS = Number(process.env.YOUTUBE_RETRY_NONE_DAYS ?? 60);
 const RETRY_FAILED_HOURS = Number(process.env.YOUTUBE_RETRY_FAILED_HOURS ?? 24);
 const VERIFY_EVERY_DAYS = Number(process.env.YOUTUBE_VERIFY_DAYS ?? 25);
-const VERIFY_PLACES_PER_RUN = 16; // 16 places x 3 videos = 48 ids, under the 50-id limit
+const VERIFY_PLACES_PER_CALL = Math.max(1, Math.floor(50 / MAX_VIDEOS)); // videos.list takes at most 50 ids
+const MAX_VERIFY_CALLS = 5; // at most 5 quota units per run
 
 export class YouTubeApiError extends Error {
     constructor(public status: number, message: string) {
@@ -79,20 +81,27 @@ async function apiGet<T>(path: string, params: Record<string, string>): Promise<
 
 /**
  * Relevance score, or null when the video must NOT be associated with the place.
- * The place name has to appear in the video title or channel name; short/generic
- * names ("Garden Hotel") must also match the city. Higher score = better match.
+ * The place name must appear in the video title or channel name (exact phrase, or
+ * every word of a multi-word name). Short/generic names ("Garden Hotel") must also
+ * match the city. Higher score = better match.
  */
 function scoreItem(item: SearchItem, placeName: string, cityName: string | null): number | null {
     const title = normalize(item.snippet.title);
     const hay = `${title} ${normalize(item.snippet.channelTitle)}`;
     const name = normalize(placeName);
-    if (!name || !hay.includes(name)) return null;
+    if (!name) return null;
+
+    const tokens = name.split(" ");
+    const words = new Set(hay.split(" "));
+    const exact = hay.includes(name);
+    const allWords = tokens.length >= 2 && tokens.every((t) => words.has(t));
+    if (!exact && !allWords) return null;
 
     const city = cityName ? normalize(cityName) : "";
     const cityHit = city !== "" && hay.includes(city);
-    if (name.split(" ").length <= 2 && city !== "" && !cityHit) return null;
+    if (tokens.length <= 2 && city !== "" && !cityHit) return null;
 
-    let score = title.includes(name) ? 3 : 1;
+    let score = title.includes(name) ? 3 : exact ? 2 : 1;
     if (cityHit) score += 2;
     if (/\b(hotel|resort|lodge|inn|guest ?house|apartment|camp|restaurant|tour|review|room|stay|walkthrough|vlog|visit)\b/.test(title)) score += 1;
     return score;
@@ -110,7 +119,7 @@ export async function searchAndSaveVideos(place: SearchablePlace): Promise<numbe
         part: "snippet",
         type: "video",
         q: `${place.name} ${place.cityName ?? place.countryName}`,
-        maxResults: "15", // over-fetch: many are filtered out as unrelated
+        maxResults: "30", // same 100-unit cost as 5; over-fetch because many are filtered out as unrelated
         videoEmbeddable: "true",
         safeSearch: "strict",
         relevanceLanguage: "en",
@@ -190,68 +199,77 @@ export async function pickPlacesForSearch(limit: number) {
 }
 
 /**
- * Availability + metadata refresh for saved videos: ONE videos.list call
- * (1 unit) for up to 16 places. Removes videos that are deleted, private or
- * no longer embeddable, and refreshes titles/thumbnails of the rest.
+ * Availability + metadata refresh for saved videos: one videos.list call
+ * (1 unit) per batch of places, at most MAX_VERIFY_CALLS per run. Removes videos
+ * that are deleted, private or no longer embeddable, and refreshes titles and
+ * thumbnails of the rest.
  */
-export async function verifyDueVideos(): Promise<{ checked: number; removed: number; touched: { slug: string; category: any }[] }> {
-    const cutoff = addDays(new Date(), -VERIFY_EVERY_DAYS);
-    const places = await prisma.place.findMany({
-        where: { videoStatus: "FOUND", OR: [{ videoVerifiedAt: null }, { videoVerifiedAt: { lt: cutoff } }] },
-        orderBy: [{ videoVerifiedAt: { sort: "asc", nulls: "first" } }],
-        take: VERIFY_PLACES_PER_RUN,
-        select: { id: true, slug: true, category: true, videos: { orderBy: { order: "asc" }, select: { id: true, videoId: true } } },
-    });
-    if (places.length === 0) return { checked: 0, removed: 0, touched: [] };
-
-    const ids = Array.from(new Set(places.flatMap((p) => p.videos.map((v) => v.videoId))));
-    const byId = new Map<string, VideoItem>();
-    if (ids.length > 0) {
-        const data = await apiGet<{ items?: VideoItem[] }>("/videos", { part: "snippet,status", id: ids.join(","), maxResults: "50" });
-        for (const it of data.items ?? []) byId.set(it.id, it);
-    }
-
-    const now = new Date();
+export async function verifyDueVideos(): Promise<{
+    checked: number;
+    removed: number;
+    touched: { slug: string; category: PlaceCategory }[];
+}> {
+    let checked = 0;
     let removed = 0;
-    const touched: { slug: string; category: any }[] = [];
+    const touched: { slug: string; category: PlaceCategory }[] = [];
 
-    for (const p of places) {
-        const keep: { rowId: string; item: VideoItem }[] = [];
-        const drop: string[] = [];
-        for (const v of p.videos) {
-            const item = byId.get(v.videoId);
-            const ok = !!item && item.status?.privacyStatus === "public" && item.status?.embeddable !== false && !!item.snippet;
-            if (ok) keep.push({ rowId: v.id, item: item as VideoItem });
-            else drop.push(v.id);
+    for (let round = 0; round < MAX_VERIFY_CALLS; round++) {
+        const cutoff = addDays(new Date(), -VERIFY_EVERY_DAYS);
+        const places = await prisma.place.findMany({
+            where: { videoStatus: "FOUND", OR: [{ videoVerifiedAt: null }, { videoVerifiedAt: { lt: cutoff } }] },
+            orderBy: [{ videoVerifiedAt: { sort: "asc", nulls: "first" } }],
+            take: VERIFY_PLACES_PER_CALL,
+            select: { id: true, slug: true, category: true, videos: { orderBy: { order: "asc" }, select: { id: true, videoId: true } } },
+        });
+        if (places.length === 0) break;
+
+        const ids = Array.from(new Set(places.flatMap((p) => p.videos.map((v) => v.videoId))));
+        const byId = new Map<string, VideoItem>();
+        if (ids.length > 0) {
+            const data = await apiGet<{ items?: VideoItem[] }>("/videos", { part: "snippet,status", id: ids.join(","), maxResults: "50" });
+            for (const it of data.items ?? []) byId.set(it.id, it);
         }
 
-        const ops = [
-            ...(drop.length ? [prisma.placeVideo.deleteMany({ where: { id: { in: drop } } })] : []),
-            ...keep.map((k, idx) =>
-                prisma.placeVideo.update({
-                    where: { id: k.rowId },
-                    data: {
-                        order: idx, // a spare is promoted to primary when the primary is removed
-                        title: decodeEntities(k.item.snippet!.title),
-                        channelTitle: k.item.snippet!.channelTitle ? decodeEntities(k.item.snippet!.channelTitle) : null,
-                        thumbnailUrl: pickThumb(k.item.snippet!.thumbnails, k.item.id),
-                        fetchedAt: now,
-                    },
-                })
-            ),
-            prisma.place.update({
-                where: { id: p.id },
-                data:
-                    keep.length === 0
-                        ? { videoStatus: "PENDING", videoNextSearchAt: null, videoVerifiedAt: null } // search again
-                        : { videoVerifiedAt: now },
-            }),
-        ];
-        await prisma.$transaction(ops);
+        const now = new Date();
+        for (const p of places) {
+            const keep: { rowId: string; item: VideoItem }[] = [];
+            const drop: string[] = [];
+            for (const v of p.videos) {
+                const item = byId.get(v.videoId);
+                const ok = !!item && item.status?.privacyStatus === "public" && item.status?.embeddable !== false && !!item.snippet;
+                if (ok) keep.push({ rowId: v.id, item: item as VideoItem });
+                else drop.push(v.id);
+            }
 
-        removed += drop.length;
-        if (drop.length > 0) touched.push({ slug: p.slug, category: p.category });
+            const ops = [
+                ...(drop.length ? [prisma.placeVideo.deleteMany({ where: { id: { in: drop } } })] : []),
+                ...keep.map((k, idx) =>
+                    prisma.placeVideo.update({
+                        where: { id: k.rowId },
+                        data: {
+                            order: idx, // a spare is promoted to the main video when the main one is removed
+                            title: decodeEntities(k.item.snippet!.title),
+                            channelTitle: k.item.snippet!.channelTitle ? decodeEntities(k.item.snippet!.channelTitle) : null,
+                            thumbnailUrl: pickThumb(k.item.snippet!.thumbnails, k.item.id),
+                            fetchedAt: now,
+                        },
+                    })
+                ),
+                prisma.place.update({
+                    where: { id: p.id },
+                    data:
+                        keep.length === 0
+                            ? { videoStatus: "PENDING", videoNextSearchAt: null, videoVerifiedAt: null } // search again
+                            : { videoVerifiedAt: now },
+                }),
+            ];
+            await prisma.$transaction(ops);
+
+            removed += drop.length;
+            if (drop.length > 0) touched.push({ slug: p.slug, category: p.category });
+        }
+        checked += places.length;
     }
 
-    return { checked: places.length, removed, touched };
+    return { checked, removed, touched };
 }

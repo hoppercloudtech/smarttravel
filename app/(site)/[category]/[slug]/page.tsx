@@ -19,7 +19,7 @@ import { PhotoCarousel } from "@/components/site/photo-carousel";
 // ISR: pages are served statically and refreshed at most every 24h, but the
 // ingestion pipeline and admin edits call revalidatePath() for immediate
 // freshness on create/update — see jobs/ingest.ts and the admin place actions.
-// The YouTube cron also revalidates a page as soon as it saves a video for it.
+// The YouTube cron also revalidates a page as soon as it saves videos for it.
 export const revalidate = 86400;
 export const dynamicParams = true; // allow on-demand generation for places not yet statically built
 
@@ -36,7 +36,7 @@ async function getPlace(categorySlug: string, slug: string) {
       city: true,
       media: { orderBy: { order: "asc" } },
       // Saved videos only — this page never calls the YouTube API.
-      videos: { orderBy: { order: "asc" }, take: 1 },
+      videos: { orderBy: { order: "asc" } },
       summaries: { where: { isCurrent: true }, take: 1 },
       faqs: { orderBy: { order: "asc" } },
       nearbyFrom: {
@@ -96,7 +96,7 @@ export default async function PlacePage({ params }: Props) {
   const summary = place.summaries[0]?.content;
   const jsonLd = buildPlaceJsonLd(place);
 
-  const primaryVideo = place.videos[0] ?? null;
+  const videos = place.videos.map((v) => ({ videoId: v.videoId, title: v.title, thumbnailUrl: v.thumbnailUrl }));
   const photos = place.media.map((m) => ({
     url: m.url,
     altText: m.altText,
@@ -153,9 +153,9 @@ export default async function PlacePage({ params }: Props) {
         </p>
       </header>
 
-      {/* Video first; falls back to the photo gallery when no saved video exists */}
-      {primaryVideo ? (
-        <VideoHero video={primaryVideo} placeName={place.name} />
+      {/* Video first (main video + more videos below); photo gallery when no saved video exists */}
+      {videos.length > 0 ? (
+        <VideoHero videos={videos} placeName={place.name} />
       ) : (
         <ImageGallery images={place.media} placeName={place.name} />
       )}
@@ -197,9 +197,9 @@ export default async function PlacePage({ params }: Props) {
             </section>
           )}
 
-          {/* Photo cards (replaces the old video cards). When there is no video the
-              photos are already in the hero gallery, so they are not repeated here. */}
-          {primaryVideo && photos.length > 0 && <PhotoCarousel photos={photos} placeName={place.name} />}
+          {/* Photo cards. When there is no video the photos are already in the hero gallery,
+              so they are not repeated here. */}
+          {videos.length > 0 && photos.length > 0 && <PhotoCarousel photos={photos} placeName={place.name} />}
 
           {place.latitude != null && place.longitude != null && (
             <section>

@@ -44,6 +44,7 @@ export type RelatedPlaceItem = {
     cityName: string | null;
     countryName: string;
     heroImageUrl: string | null;
+    videoThumbnailUrl: string | null;
 };
 
 type Candidate = {
@@ -59,6 +60,7 @@ type Candidate = {
     city: { name: string } | null;
     country: { name: string };
     media: { url: string }[];
+    videos: { thumbnailUrl: string }[];
 };
 
 type ScoredCandidate = RelatedPlaceItem & {
@@ -121,6 +123,7 @@ function scoreCandidates(current: RelatedPlacesInput, candidates: Candidate[]): 
             cityName: c.city?.name ?? null,
             countryName: c.country.name,
             heroImageUrl: c.media[0]?.url ?? null,
+            videoThumbnailUrl: c.videos[0]?.thumbnailUrl ?? null,
             _score: score,
             _viewCount: c.viewCount,
             _distanceKm: distanceKm,
@@ -162,6 +165,7 @@ async function fetchCandidatePool(current: RelatedPlacesInput): Promise<Candidat
             city: { select: { name: true } },
             country: { select: { name: true } },
             media: { where: { isHero: true }, take: 1, select: { url: true } },
+            videos: { orderBy: { order: "asc" }, take: 1, select: { thumbnailUrl: true } },
         },
         orderBy: { viewCount: "desc" },
         take: CANDIDATE_POOL_SIZE,

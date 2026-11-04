@@ -7,6 +7,7 @@ export const placeInclude = {
     country: true,
     city: true,
     media: { where: { isHero: true }, take: 1 },
+    videos: { orderBy: { order: "asc" }, take: 1, select: { thumbnailUrl: true } },
     summaries: { where: { isCurrent: true }, take: 1 },
 } satisfies Prisma.PlaceInclude;
 
@@ -20,6 +21,7 @@ export function toCard(p: PlaceWithRelations): PlaceCardData {
         cityName: p.city?.name,
         countryName: p.country.name,
         heroImageUrl: p.media[0]?.url,
+        videoThumbnailUrl: p.videos[0]?.thumbnailUrl,
         summarySnippet: p.summaries[0]?.content?.slice(0, 110),
     };
 }
